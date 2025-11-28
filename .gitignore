@@ -163,6 +163,7 @@ dmypy.json
 # !.vscode/tasks.json
 # !.vscode/launch.json
 # !.vscode/extensions.json
+.DS_Store
 
 ### VisualStudioCode Patch ###
 # Ignore all local history of files
