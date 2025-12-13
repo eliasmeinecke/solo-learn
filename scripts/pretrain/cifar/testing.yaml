@@ -25,14 +25,14 @@ momentum:
   final_tau: 1.0
 data:
   dataset: cifar10 # change here for cifar100
-  train_path: "./datasets"
-  val_path: "./datasets"
+  train_path: "/home/elias/data"
+  val_path: "/home/elias/data"
   format: "image_folder"
-  num_workers: 0
+  num_workers: 4
 optimizer:
   name: "lars"
-  batch_size: 256
-  lr: 0.3
+  batch_size: 64
+  lr: 0.075
   classifier_lr: 0.3
   weight_decay: 1e-6
   kwargs:
@@ -49,9 +49,9 @@ auto_resume:
   enabled: True
 
 # overwrite PL stuff
-max_epochs: 3
+max_epochs: 1
 devices: [0]
-sync_batchnorm: True
+sync_batchnorm: False
 accelerator: "gpu"
-strategy: "ddp"
+strategy: auto
 precision: 16-mixed
