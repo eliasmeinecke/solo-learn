@@ -31,6 +31,9 @@ from torch.utils.data.dataset import Dataset
 from torchvision import transforms
 from torchvision.datasets import STL10, ImageFolder
 
+# foveation
+from foveation.gaze_crop import GazeCenteredCrop
+
 try:
     from solo.data.h5_dataset import H5Dataset
 except ImportError:
@@ -216,6 +219,15 @@ def build_transform_pipeline(dataset, cfg):
     )
 
     augmentations = []
+
+    # Add foveation first (change to select type via cfg?)
+    augmentations.append(
+        GazeCenteredCrop(
+            crop_size=240,
+            gaze=(358, 358),
+        )
+    )
+
     if cfg.rrc.enabled:
         augmentations.append(
             transforms.RandomResizedCrop(
