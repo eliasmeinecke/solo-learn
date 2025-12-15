@@ -25,8 +25,8 @@ momentum:
   final_tau: 1.0
 data:
   dataset: cifar10 # change here for cifar100
-  train_path: "/home/elias/data"
-  val_path: "/home/elias/data"
+  train_path: "/home/elias/solo-learn/datasets"
+  val_path: "/home/elias/solo-learn/datasets"
   format: "image_folder"
   num_workers: 4
 optimizer:

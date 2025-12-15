@@ -12,6 +12,7 @@ auto_umap/
 # datasets dir
 datasets/
 # saved models
+trained_models/
 *.pt
 *.pth
 *.ckpt
