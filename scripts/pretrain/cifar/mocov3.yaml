@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - augmentations: asymmetric.yaml
-  - wandb: private.yaml
+  - wandb: ts_debug.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
@@ -47,6 +47,16 @@ checkpoint:
   frequency: 1
 auto_resume:
   enabled: True
+knn_clb:
+  enabled: True
+  dataset: cifar10
+  train_path:  "./datasets"
+  val_path:  "./datasets"
+  num_workers: 8
+  batch_size: 16
+  k: [ 10, 20, 50, 100 ]
+  perform_on_validation: True
+  verbose: True
 
 # overwrite PL stuff
 max_epochs: 1000

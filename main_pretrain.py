@@ -39,6 +39,7 @@ from solo.data.pretrain_dataloader import (
 from solo.methods import METHODS
 from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
+from solo.utils.knn_callback import KNNCallback
 from solo.utils.misc import make_contiguous, omegaconf_select
 
 try:
@@ -174,6 +175,9 @@ def main(cfg: DictConfig):
         del cfg.resume_from_checkpoint
 
     callbacks = []
+
+    if cfg.knn_clb.enabled:
+        callbacks.append(KNNCallback(cfg.knn_clb))
 
     if cfg.checkpoint.enabled:
         ckpt = Checkpointer(

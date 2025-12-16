@@ -29,7 +29,7 @@ class WeightedKNNClassifier(Metric):
         self,
         k: int = 20,
         T: float = 0.07,
-        max_distance_matrix_size: int = int(5e6),
+        max_distance_matrix_size: int = int(5e5),
         distance_fx: str = "cosine",
         epsilon: float = 0.00001,
         dist_sync_on_step: bool = False,
@@ -50,7 +50,7 @@ class WeightedKNNClassifier(Metric):
                 step. Defaults to False.
         """
 
-        super().__init__(dist_sync_on_step=dist_sync_on_step, compute_on_step=False)
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
 
         self.k = k
         self.T = T
@@ -62,6 +62,13 @@ class WeightedKNNClassifier(Metric):
         self.add_state("train_targets", default=[], persistent=False)
         self.add_state("test_features", default=[], persistent=False)
         self.add_state("test_targets", default=[], persistent=False)
+
+
+    def set_k(self, k: int):
+        self.k = k
+
+    def set_T(self, T: float):
+        self.T = T
 
     def update(
         self,
