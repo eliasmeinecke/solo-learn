@@ -139,7 +139,7 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         "custom": custom_pipeline,
     }
 
-    assert dataset in pipelines
+    assert dataset in pipelines, f"{dataset} is not supported."
 
     pipeline = pipelines[dataset]
     T_train = pipeline["T_train"]

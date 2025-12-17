@@ -1,0 +1,79 @@
+defaults:
+  - _self_
+  - augmentations: asymmetric.yaml
+  - wandb: ts_debug.yaml
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+
+# disable hydra outputs
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+seed: 0
+name: "mocov3_rn50_t=0"
+method: "mocov3"
+backbone:
+  name: "resnet50"
+method_kwargs:
+  proj_hidden_dim: 4096
+  proj_output_dim: 256
+  pred_hidden_dim: 4096
+  temperature: 0.1
+#  layers: 2 # theses parameters need to be added
+#  layers_pred: 2
+momentum:
+  base_tau: 0.996
+  final_tau: 0.996
+data:
+  dataset: ego4d
+  train_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/Ego4d/Ego4dDivSubset"
+  val_path: None
+  format: "h5"
+  num_workers: 8
+  dataset_kwargs:
+    time_window: 15
+optimizer:
+  name: "lars"
+  batch_size: 256
+  lr: 1.6
+  classifier_lr: 3e-3
+  weight_decay: 1e-6
+  no_labels: True
+scheduler:
+  name: "warmup_cosine"
+  warmup_epochs: 0.01
+checkpoint:
+  enabled: True
+  dir: "trained_models"
+  frequency: 1
+  keep_prev: True
+  every_n_iter: 5000
+auto_resume:
+  enabled: False
+
+
+knn_clb:
+  enabled: True
+  dataset: cifar10
+  train_path:  "./datasets"
+  val_path:  "./datasets"
+  num_workers: 8
+  batch_size: 16
+  k: [ 10, 20, 50, 100 ]
+  perform_on_validation: True
+  verbose: True
+
+# overwrite PL stuff
+max_epochs: 10
+devices: 8
+sync_batchnorm: True
+accelerator: "gpu"
+strategy: "ddp"
+precision: 16-mixed
+no_validation: True # important since we have no validation split
+limit_val_batches: 0
+num_sanity_val_steps: 0
+log_every_n_steps: 10
