@@ -51,11 +51,6 @@ class KNNCallback(pl.Callback):
 
 
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        print("Epoch end", trainer.current_epoch)
-        print("self.cfg.perform_on_validation", self.cfg.perform_on_validation)
-        print("self.cfg.freq_epochs", self.cfg.freq_epochs)
-        print("self.cfg.delay_epochs", self.cfg.delay_epochs)
-
         if self.cfg.perform_on_validation and trainer.current_epoch >= self.cfg.delay_epochs and not trainer.current_epoch%self.cfg.freq_epochs:
             self._run(trainer, pl_module)
 
