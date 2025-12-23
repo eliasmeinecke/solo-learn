@@ -1,10 +1,9 @@
 defaults:
   - _self_
   - augmentations: asymmetric.yaml
-  - wandb: ts_debug.yaml
+  - wandb: private.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
-
 
 # disable hydra outputs
 hydra:
@@ -12,68 +11,67 @@ hydra:
   run:
     dir: .
 
-seed: 0
-name: "mocov3_rn50_t=0"
+name: "mocov3-ego4d-t0"
 method: "mocov3"
 backbone:
-  name: "resnet50"
+  name: "resnet18"
 method_kwargs:
-  proj_hidden_dim: 4096
+  proj_hidden_dim: 2048
   proj_output_dim: 256
-  pred_hidden_dim: 4096
-  temperature: 0.1
-#  layers: 2 # theses parameters need to be added
-#  layers_pred: 2
+  pred_hidden_dim: 2048
+  temperature: 0.2
+  # theses parameters need to be added (and added to the mocov3 method):
+  #  layers: 2 
+  #  layers_pred: 2
 momentum:
-  base_tau: 0.996
-  final_tau: 0.996
+  base_tau: 0.99
+  final_tau: 1.0
 data:
   dataset: ego4d
   train_path: "/home/data/elias/Ego4dDivSubset"
   val_path: None
   format: "h5"
-  num_workers: 8
+  num_workers: 4
   dataset_kwargs:
     time_window: 15
 optimizer:
   name: "lars"
-  batch_size: 256
-  lr: 1.6
-  classifier_lr: 3e-3
+  batch_size: 64
+  lr: 0.075
+  classifier_lr: 0.3
   weight_decay: 1e-6
-  no_labels: True
+  kwargs:
+    clip_lr: True
+    eta: 0.02
+    exclude_bias_n_norm: True
 scheduler:
   name: "warmup_cosine"
-  warmup_epochs: 0.01
 checkpoint:
   enabled: True
   dir: "trained_models"
   frequency: 1
-  keep_prev: True
-  every_n_iter: 5000
 auto_resume:
-  enabled: False
-
-
+  enabled: True
 knn_clb:
   enabled: True
   dataset: cifar10
-  train_path:  "./datasets"
-  val_path:  "./datasets"
-  num_workers: 8
+  train_path:  "/home/elias/solo-learn/datasets"
+  val_path:  "/home/elias/solo-learn/datasets"
+  num_workers: 4
   batch_size: 16
   k: [ 10, 20, 50, 100 ]
   perform_on_validation: True
   verbose: True
 
 # overwrite PL stuff
-max_epochs: 10
-devices: 8
-sync_batchnorm: True
+max_epochs: 1
+devices: 2
+sync_batchnorm: False
 accelerator: "gpu"
-strategy: "ddp"
+strategy: ddp
 precision: 16-mixed
 no_validation: True # important since we have no validation split
 limit_val_batches: 0
 num_sanity_val_steps: 0
-log_every_n_steps: 10
+log_every_n_steps: 10 # increase for larger runs
+limit_train_batches: 20 # percentile or total batches (1.0 for full run)
