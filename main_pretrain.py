@@ -206,6 +206,8 @@ def main(cfg: DictConfig):
             project=cfg.wandb.project,
             entity=cfg.wandb.entity,
             offline=cfg.wandb.offline,
+            group=cfg.wandb.group,
+            job_type=cfg.wandb.job_type,
             resume="allow" if wandb_run_id else None,
             id=wandb_run_id,
         )
