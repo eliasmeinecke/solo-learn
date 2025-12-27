@@ -21,8 +21,8 @@ method_kwargs:
   pred_hidden_dim: 4096
   temperature: 0.1
   # theses parameters need to be added (and added to the mocov3 method):
-  #  layers: 2    (3 for projector?)
-  #  layers_pred: 2
+  layers_proj: 3 
+  layers_pred: 2
 momentum:
   base_tau: 0.996
   final_tau: 0.996

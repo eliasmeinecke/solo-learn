@@ -25,6 +25,7 @@ import torch.nn as nn
 from solo.losses.mocov3 import mocov3_loss_func
 from solo.methods.base import BaseMomentumMethod
 from solo.utils.momentum import initialize_momentum_params
+from solo.utils.misc import omegaconf_select
 
 
 class MoCoV3(BaseMomentumMethod):
@@ -47,17 +48,23 @@ class MoCoV3(BaseMomentumMethod):
         proj_output_dim: int = cfg.method_kwargs.proj_output_dim
         pred_hidden_dim: int = cfg.method_kwargs.pred_hidden_dim
 
+        # new parameters
+        layers_proj: int = cfg.method_kwargs.layers_proj
+        layers_pred: int = cfg.method_kwargs.layers_pred
+
+        # add default? 2-2
+
         if "resnet" in self.backbone_name:
             # projector
             self.projector = self._build_mlp(
-                2,
+                layers_proj,
                 self.features_dim,
                 proj_hidden_dim,
                 proj_output_dim,
             )
             # momentum projector
             self.momentum_projector = self._build_mlp(
-                2,
+                layers_proj,
                 self.features_dim,
                 proj_hidden_dim,
                 proj_output_dim,
@@ -65,7 +72,7 @@ class MoCoV3(BaseMomentumMethod):
 
             # predictor
             self.predictor = self._build_mlp(
-                2,
+                layers_pred,
                 proj_output_dim,
                 pred_hidden_dim,
                 proj_output_dim,
@@ -75,14 +82,14 @@ class MoCoV3(BaseMomentumMethod):
             # specifically for ViT but allow all the other backbones
             # projector
             self.projector = self._build_mlp(
-                3,
+                layers_proj,
                 self.features_dim,
                 proj_hidden_dim,
                 proj_output_dim,
             )
             # momentum projector
             self.momentum_projector = self._build_mlp(
-                3,
+                layers_proj,
                 self.features_dim,
                 proj_hidden_dim,
                 proj_output_dim,
@@ -90,7 +97,7 @@ class MoCoV3(BaseMomentumMethod):
 
             # predictor
             self.predictor = self._build_mlp(
-                2,
+                layers_pred,
                 proj_output_dim,
                 pred_hidden_dim,
                 proj_output_dim,
@@ -132,6 +139,12 @@ class MoCoV3(BaseMomentumMethod):
         assert not omegaconf.OmegaConf.is_missing(cfg, "method_kwargs.proj_hidden_dim")
         assert not omegaconf.OmegaConf.is_missing(cfg, "method_kwargs.pred_hidden_dim")
         assert not omegaconf.OmegaConf.is_missing(cfg, "method_kwargs.temperature")
+        cfg.method_kwargs.layers_proj = omegaconf_select(
+            cfg, "method_kwargs.layers_proj", 2
+        )
+        cfg.method_kwargs.layers_pred = omegaconf_select(
+            cfg, "method_kwargs.layers_pred", 2
+        )
 
         return cfg
 
