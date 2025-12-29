@@ -2,14 +2,14 @@
 from PIL import Image
 import torchvision.transforms as T
 
-from gaze_crop import GazeCenteredCrop
+from foveation.gaze_crop import GazeCenteredCrop
 
 
 
 def test_transform(transform):
     # Test if transform is created correctly
     
-    img = Image.open("visualisation_data/skating_panda.jpg").convert("RGB")
+    img = Image.open("test").convert("RGB")
 
     x = transform(img)
 

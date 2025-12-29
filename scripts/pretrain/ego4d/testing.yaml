@@ -11,7 +11,7 @@ hydra:
   run:
     dir: .
 
-name: "mocov3-ego4d-tmini-1"
+name: "mocov3-ego4d-minitest-crop1"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -34,6 +34,7 @@ data:
   num_workers: 4
   dataset_kwargs:
     time_window: 15
+    fov_type: gaze_crop
 optimizer:
   name: "lars"
   batch_size: 128
@@ -70,7 +71,7 @@ knn_clb:
 
 
 # overwrite PL stuff
-max_epochs: 3
+max_epochs: 1
 devices: 2
 sync_batchnorm: True
 accelerator: "gpu"
