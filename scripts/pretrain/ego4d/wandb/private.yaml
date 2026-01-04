@@ -1,6 +1,6 @@
 enabled: True
 entity: "eliasmeinecke-uni-frankfurt"
-project: "bachelorthesis-test"
+project: "bachelorthesis"
 
-group: "testing"  # testing for baseline and later foveation type (baseline, crop, blur...)
+group: "lr-sweep"  # testing, lr-sweep, baseline, crop
 job_type: "pretrain"  # pretrain, linear_eval, knn_eval, background_study?

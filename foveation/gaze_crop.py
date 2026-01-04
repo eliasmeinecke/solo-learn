@@ -1,7 +1,7 @@
 
 from PIL import Image
 import pandas as pd
-from base import Foveation
+from foveation.base import Foveation
 
 
 class GazeCenteredCrop(Foveation):

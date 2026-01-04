@@ -11,7 +11,7 @@ hydra:
   run:
     dir: .
 
-name: "mocov3-ego4d-minitest-crop1"
+name: "mocov3-ego4d-lrsweep-04"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -34,11 +34,11 @@ data:
   num_workers: 4
   dataset_kwargs:
     time_window: 15
-    fov_type: gaze_crop
+    fov_type: none
 optimizer:
   name: "lars"
   batch_size: 128
-  lr: 0.2
+  lr: 0.4
   classifier_lr: 3e-3
   weight_decay: 1e-6
   no_labels: True
@@ -55,7 +55,7 @@ auto_resume:
   enabled: True
 knn_clb:
   enabled: True
-  dataset: cifar10
+  dataset: cifar10 # later change to imagenet
   train_path:  "/home/elias/solo-learn/datasets"
   val_path:  "/home/elias/solo-learn/datasets"
   num_workers: 4
@@ -64,14 +64,13 @@ knn_clb:
   perform_on_validation: True
   verbose: True
 
-# doesn't work:
 # dataset: imagenet
-# train_path:  "/home/data/ImageNet/ILSVRC/Data/CLS-LOC/train"
-# val_path:  "/home/data/ImageNet/ILSVRC/Data/CLS-LOC/val"
+# train_path: "/home/data/ILSVRC_real/train" 
+# val_path: "/home/data/ILSVRC_real/val"
 
 
 # overwrite PL stuff
-max_epochs: 1
+max_epochs: 3
 devices: 2
 sync_batchnorm: True
 accelerator: "gpu"
@@ -80,5 +79,5 @@ precision: 16-mixed
 no_validation: True # important since we have no validation split
 limit_val_batches: 0
 num_sanity_val_steps: 0
-log_every_n_steps: 10 # increase for larger runs
-limit_train_batches: 0.01 # percentile or total batches (1.0 for full run)
+log_every_n_steps: 100 # increase for larger runs
+limit_train_batches: 0.25 # percentile or total batches (1.0 for full run)

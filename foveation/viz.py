@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from pathlib import Path
 
-from gaze_crop import GazeCenteredCrop
+from foveation.gaze_crop import GazeCenteredCrop
 
 
 def viz_saliency(df, index, frame, saliency):
@@ -23,16 +23,16 @@ def viz_saliency(df, index, frame, saliency):
     ax[1].scatter(max_x, max_y, c="red", s=50)
     plt.tight_layout()
     
-    BASE_DIR = Path(__file__).resolve().parent
-    OUT_PATH = BASE_DIR / "plots" / "ego4d" / "ego4d_example.png"
+    base_dir = Path(__file__).resolve().parent
+    out_path = base_dir / "plots" / "ego4d" / "ego4d_example.png"
 
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(OUT_PATH, dpi=200)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=200)
 
     print("Saved ego4d_example.png")
 
 
-def viz_crop(df, index, frame, method):
+def viz_fov(df, index, frame, method):
     
     row = df.iloc[index]
 
@@ -59,11 +59,11 @@ def viz_crop(df, index, frame, method):
 
     plt.tight_layout()
 
-    BASE_DIR = Path(__file__).resolve().parent
-    OUT_PATH = BASE_DIR / "plots" / method / "ego4d_crop_example.png"
+    base_dir = Path(__file__).resolve().parent
+    out_path = base_dir / "plots" / method / "ego4d_crop_example.png"
 
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(OUT_PATH, dpi=200)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=200)
 
     print("Saved crop_example.png")    
 
@@ -86,4 +86,4 @@ if __name__ == "__main__":
     method = "crop"
 
     # viz_saliency(df, i, frame, saliency)
-    viz_crop(df, i, frame, method)
+    viz_fov(df, i, frame, method)
