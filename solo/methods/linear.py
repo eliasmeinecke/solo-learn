@@ -18,6 +18,7 @@
 # DEALINGS IN THE SOFTWARE.
 
 import logging
+from collections import defaultdict
 from typing import Any, Callable, Dict, List, Tuple, Union
 
 import lightning.pytorch as pl
@@ -26,6 +27,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import ExponentialLR, MultiStepLR, ReduceLROnPlateau
+from torchvision.models.feature_extraction import create_feature_extractor
 
 from solo.utils.lars import LARS
 from solo.utils.lr_scheduler import LinearWarmupCosineAnnealingLR
@@ -35,6 +37,7 @@ from solo.utils.misc import (
     param_groups_layer_decay,
     remove_bias_and_norm_from_weight_decay,
 )
+from solo.utils.multi_linear import setup_linear_classifiers
 
 
 class LinearModel(pl.LightningModule):
@@ -98,19 +101,47 @@ class LinearModel(pl.LightningModule):
         """
 
         super().__init__()
+        print(cfg)
 
         # add default values and assert that config has the basic needed settings
         cfg = self.add_and_assert_specific_cfg(cfg)
+        self.cfg = cfg
+
 
         # backbone
         self.backbone = backbone
         if hasattr(self.backbone, "inplanes"):
-            features_dim = self.backbone.inplanes
+            self.features_dim = self.backbone.inplanes
         else:
-            features_dim = self.backbone.num_features
+            self.features_dim = self.backbone.num_features
 
-        # classifier
-        self.classifier = nn.Linear(features_dim, cfg.data.num_classes)  # type: ignore
+        if self.cfg.grid.enabled:
+            if self.cfg.grid.layer_names is not None:
+                self.backbone = create_feature_extractor(self.backbone, return_nodes=list(self.cfg.grid.layer_names))
+
+            sample_output = self.forward_backbone(torch.randn(2, getattr(self.backbone, "channels", 3), 224, 224))
+
+            if isinstance(sample_output, dict):
+                for k, v in sample_output.items():
+                    print(k, v.shape)
+            else:
+                print("Sample output shape", sample_output.shape)
+
+            self.classifier, self.optim_param_groups = setup_linear_classifiers(
+                sample_output=sample_output,
+                learning_rates=self.cfg.grid.lr,
+                batch_size=self.cfg.optimizer.batch_size,
+                devices=self.cfg.devices,
+                num_classes=self.cfg.data.num_classes,
+                layer_names=self.cfg.grid.layer_names,
+                pool=self.cfg.grid.pool,
+            )
+        else:
+            self.classifier = nn.Linear(self.features_dim, cfg.data.num_classes)
+            self.classifier.weight.data.normal_(mean=0.0, std=0.01)
+            self.classifier.bias.data.zero_()
+
+            self.optim_param_groups = [{"name": "classifier", "params": self.classifier.parameters()}]
 
         # mixup/cutmix function
         self.mixup_func: Callable = mixup_func
@@ -158,6 +189,8 @@ class LinearModel(pl.LightningModule):
 
         # keep track of validation metrics
         self.validation_step_outputs = []
+        self.max_val_acc_top1 = defaultdict(lambda: torch.tensor(0.0))
+
 
     @staticmethod
     def add_and_assert_specific_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
@@ -197,6 +230,13 @@ class LinearModel(pl.LightningModule):
             cfg, "performance.disable_channel_last", False
         )
 
+        cfg.grid.enabled = omegaconf_select(cfg, "grid.enabled", True)
+        cfg.grid.lr = omegaconf_select(cfg, "grid.lr",
+                                       [0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3,
+                                        0.5])
+        cfg.grid.layer_names = omegaconf_select(cfg, "grid.layer_names", None)
+        cfg.grid.pool = omegaconf_select(cfg, "grid.pool", None)
+
         return cfg
 
     def configure_optimizers(self) -> Tuple[List, List]:
@@ -220,16 +260,16 @@ class LinearModel(pl.LightningModule):
                 no_weight_decay_list=self.backbone.no_weight_decay(),
                 layer_decay=self.layer_decay,
             )
-            learnable_params.append({"name": "classifier", "params": self.classifier.parameters()})
+            learnable_params.extend(self.optim_param_groups)
+
         else:
-            learnable_params = (
-                self.classifier.parameters()
-                if not self.finetune
-                else [
+            if self.finetune:
+                learnable_params = [
                     {"name": "backbone", "params": self.backbone.parameters()},
-                    {"name": "classifier", "params": self.classifier.parameters()},
+                    *self.optim_param_groups,
                 ]
-            )
+            else:
+                learnable_params = self.optim_param_groups
 
         # exclude bias and norm from weight decay
         if self.exclude_bias_n_norm_wd:
@@ -284,6 +324,12 @@ class LinearModel(pl.LightningModule):
 
         return [optimizer], [scheduler]
 
+
+
+    def forward_backbone(self, X: torch.Tensor) -> torch.Tensor:
+        return self.backbone(X)
+
+
     def forward(self, X: torch.tensor) -> Dict[str, Any]:
         """Performs forward pass of the frozen backbone and the linear layer for evaluation.
 
@@ -298,13 +344,16 @@ class LinearModel(pl.LightningModule):
             X = X.to(memory_format=torch.channels_last)
 
         with torch.set_grad_enabled(self.finetune):
-            feats = self.backbone(X)
+            feats = self.forward_backbone(X)
+
+        if not self.finetune:
+            feats = feats.detach()
 
         logits = self.classifier(feats)
         return {"logits": logits, "feats": feats}
 
     def shared_step(
-        self, batch: Tuple, batch_idx: int
+        self, batch: Tuple, batch_idx: int, mode: str = "train",
     ) -> Tuple[int, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Performs operations that are shared between the training nd validation steps.
 
@@ -318,18 +367,40 @@ class LinearModel(pl.LightningModule):
         """
 
         X, target = batch
+        target = target.long()
 
         metrics = {"batch_size": X.size(0)}
         if self.training and self.mixup_func is not None:
             X, target = self.mixup_func(X, target)
             out = self(X)["logits"]
-            loss = self.loss_func(out, target)
-            metrics.update({"loss": loss})
+            if isinstance(out, dict):
+                total_loss = 0
+                for classifier, logits in out.items():
+                    loss = self.loss_func(logits, target)
+                    total_loss += loss
+                    metrics.update({f"{mode}/{classifier}_loss": loss})
+                metrics.update({f"{mode}/loss": total_loss})
+            else:
+                loss = self.loss_func(out, target)
+                metrics.update({f"{mode}/loss": loss})
         else:
             out = self(X)["logits"]
-            loss = F.cross_entropy(out, target)
-            acc1, acc5 = accuracy_at_k(out, target, top_k=(1, 5))
-            metrics.update({"loss": loss, "acc1": acc1, "acc5": acc5})
+
+            if isinstance(out, dict):
+                total_loss = 0
+                for classifier, logits in out.items():
+                    loss = F.cross_entropy(logits, target)
+                    total_loss += loss
+
+                    acc1, acc5 = accuracy_at_k(logits, target, top_k=(1, 5))
+                    metrics.update({f"{mode}/{classifier}_loss": loss,
+                                    f"{mode}/{classifier}_acc1": acc1,
+                                    f"{mode}/{classifier}_acc5": acc5})
+                metrics.update({f"{mode}/loss": total_loss})
+            else:
+                loss = F.cross_entropy(out, target)
+                acc1, acc5 = accuracy_at_k(out, target, top_k=(1, 5))
+                metrics.update({f"{mode}/loss": loss, f"{mode}/acc1": acc1, f"{mode}/acc5": acc5})
 
         return metrics
 
@@ -348,14 +419,9 @@ class LinearModel(pl.LightningModule):
         if not self.finetune:
             self.backbone.eval()
 
-        out = self.shared_step(batch, batch_idx)
-
-        log = {"train_loss": out["loss"]}
-        if self.mixup_func is None:
-            log.update({"train_acc1": out["acc1"], "train_acc5": out["acc5"]})
-
-        self.log_dict(log, on_epoch=True, sync_dist=True)
-        return out["loss"]
+        out = self.shared_step(batch, batch_idx, mode="train")
+        self.log_dict(out, on_epoch=True, sync_dist=True)
+        return out["train/loss"]
 
     def validation_step(self, batch: torch.Tensor, batch_idx: int) -> Dict[str, Any]:
         """Performs the validation step for the linear eval.
@@ -370,14 +436,7 @@ class LinearModel(pl.LightningModule):
                 the classification loss and accuracies.
         """
 
-        out = self.shared_step(batch, batch_idx)
-
-        metrics = {
-            "batch_size": out["batch_size"],
-            "val_loss": out["loss"],
-            "val_acc1": out["acc1"],
-            "val_acc5": out["acc5"],
-        }
+        metrics = self.shared_step(batch, batch_idx, mode="val")
         self.validation_step_outputs.append(metrics)
         return metrics
 
@@ -386,11 +445,20 @@ class LinearModel(pl.LightningModule):
         This is needed because the last batch can be smaller than the others,
         slightly skewing the metrics.
         """
+        all_metrics = set(self.validation_step_outputs[0].keys()) - set(["batch_size"])
 
-        val_loss = weighted_mean(self.validation_step_outputs, "val_loss", "batch_size")
-        val_acc1 = weighted_mean(self.validation_step_outputs, "val_acc1", "batch_size")
-        val_acc5 = weighted_mean(self.validation_step_outputs, "val_acc5", "batch_size")
+        log = {}
+        for metric in sorted(all_metrics):
+            log[metric] = weighted_mean(self.validation_step_outputs, metric, "batch_size")
+
         self.validation_step_outputs.clear()
 
-        log = {"val_loss": val_loss, "val_acc1": val_acc1, "val_acc5": val_acc5}
+        for acc1_key in sorted(filter(lambda x: "acc1" in x, all_metrics)):
+            # gather all accuracies and average them
+            val_acc1_all = self.all_gather(log[acc1_key])
+            val_acc1_all = torch.mean(val_acc1_all)
+            # print(self.max_val_acc_top1[acc1_key], val_acc1_all,torch.max(self.max_val_acc_top1[acc1_key], val_acc1_all))
+            self.max_val_acc_top1[acc1_key] = torch.max(self.max_val_acc_top1[acc1_key], val_acc1_all)
+            log[f"max/{acc1_key}"] = self.max_val_acc_top1[acc1_key]
+
         self.log_dict(log, sync_dist=True)

@@ -1,0 +1,56 @@
+defaults:
+  - _self_
+  - wandb: private.yaml
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# disable hydra outputs
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+name: "mocov3-cifar10-multi-linear"
+pretrained_feature_extractor: None # path to pretrained model checkpoint
+backbone:
+  name: "resnet50"
+pretrain_method: "mocov3"
+data:
+  dataset: cifar10
+  train_path: "./datasets"
+  val_path: "./datasets"
+  num_workers: 4
+optimizer:
+  name: "sgd"
+  batch_size: 128
+  lr: 0.1
+  weight_decay: 0
+  momentum: 0.9
+scheduler:
+  name: "warmup_cosine"
+  warmup_start_lr: 0.00001
+  warmup_epochs: 0.0
+  max_epochs: 100
+  interval: "epoch"
+early_stopping:
+  enabled: False
+checkpoint:
+  enabled: False
+  dir: "trained_models"
+  frequency: 1
+auto_resume:
+  enabled: True
+
+# creates a linear classifier on top of frozen features for every learning rate in the grid
+grid:
+  enabled: True
+  lr: [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 3.0]
+
+# overwrite PL stuff
+max_epochs: 100
+devices: 1
+sync_batchnorm: True
+accelerator: "gpu"
+strategy: "ddp"
+precision: 32
+log_every_n_steps: 50

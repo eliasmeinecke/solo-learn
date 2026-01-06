@@ -1,11 +1,12 @@
 import os
 
 import omegaconf
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, ListConfig
 from solo.methods.base import BaseMethod
 from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.misc import omegaconf_select
+
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 try:
@@ -165,7 +166,9 @@ def parse_cfg(cfg: omegaconf.DictConfig):
 
     # adjust lr according to batch size
     cfg.num_nodes = omegaconf_select(cfg, "num_nodes", 1)
-    scale_factor = cfg.optimizer.batch_size * len(cfg.devices) * cfg.num_nodes / 256
+    tl = len(cfg.devices) if isinstance(cfg.devices, ListConfig) else cfg.devices
+
+    scale_factor = cfg.optimizer.batch_size * tl * cfg.num_nodes / 256
     cfg.optimizer.lr = cfg.optimizer.lr * scale_factor
 
     # extra optimizer kwargs
