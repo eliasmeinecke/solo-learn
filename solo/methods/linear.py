@@ -101,7 +101,7 @@ class LinearModel(pl.LightningModule):
         """
 
         super().__init__()
-        print(cfg)
+        # print(cfg)
 
         # add default values and assert that config has the basic needed settings
         cfg = self.add_and_assert_specific_cfg(cfg)

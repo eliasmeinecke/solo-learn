@@ -10,15 +10,15 @@ hydra:
   run:
     dir: .
 
-name: "mocov3-cifar10-multi-linear"
-pretrained_feature_extractor: None # path to pretrained model checkpoint
+name: "mocov3-cifar100-multi-linear-test"
+pretrained_feature_extractor: trained_models/mocov3/g256yzz0/mocov3-ego4d-lrsweep1-g256yzz0-ep=0.ckpt
 backbone:
   name: "resnet50"
 pretrain_method: "mocov3"
 data:
-  dataset: cifar10    # change here for cifar100
-  train_path: "./datasets"
-  val_path: "./datasets"
+  dataset: cifar100    # change here for cifar100
+  train_path: "/home/data"
+  val_path: "/home/data"
   num_workers: 4
 optimizer:
   name: "sgd"
@@ -47,8 +47,8 @@ grid:
   lr: [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 3.0]
 
 # overwrite PL stuff
-max_epochs: 100
-devices: 1
+max_epochs: 5
+devices: 2
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"

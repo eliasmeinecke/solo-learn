@@ -10,16 +10,16 @@ hydra:
   run:
     dir: .
 
-name: "mocov3-imagenet100-linear"
-pretrained_feature_extractor: None
+name: "mocov3-imagenet100-multi-linear"
+pretrained_feature_extractor: trained_models/mocov3/g256yzz0/mocov3-ego4d-lrsweep1-g256yzz0-ep=0.ckpt
 backbone:
-  name: "resnet18"
+  name: "resnet50"
 pretrain_method: "mocov3"
 data:
   dataset: imagenet100
-  train_path: "./datasets/imagenet-100/train"
-  val_path: "./datasets/imagenet-100/val"
-  format: "dali"
+  train_path: "/home/data/elias/imagenet100/train"
+  val_path: "/home/data/elias/imagenet100/val"
+  format: "image_folder"
   num_workers: 4
 optimizer:
   name: "sgd"
@@ -29,17 +29,25 @@ optimizer:
 scheduler:
   name: "step"
   lr_decay_steps: [60, 80]
+early_stopping:
+  enabled: False
 checkpoint:
-  enabled: True
+  enabled: False
   dir: "trained_models"
   frequency: 1
 auto_resume:
   enabled: True
 
+# creates a linear classifier on top of frozen features for every learning rate in the grid
+grid:
+  enabled: True
+  lr: [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 3.0]
+
 # overwrite PL stuff
-max_epochs: 100
-devices: [0]
+max_epochs: 5
+devices: 2
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
-precision: 16
+precision: 32
+log_every_n_steps: 50

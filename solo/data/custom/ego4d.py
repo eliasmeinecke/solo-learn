@@ -26,8 +26,7 @@ class Ego4d(Dataset):
 
         self.foveation = build_foveation(fov_type)
 
-        print("Ego4d init time_window:", time_window)
-        print("Ego4d init foveation_type:", fov_type)
+        print("Running with foveation type:", fov_type)
 
         self.hdf5_file = h5py.File(self.root / "ego4d_diverse_subset.h5", "r")
         self.annot = pd.read_parquet(self.root / "annot.parquet")

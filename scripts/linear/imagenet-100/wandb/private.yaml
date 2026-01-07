@@ -1,3 +1,6 @@
 enabled: True
-entity: None
-project: "solo-learn"
+entity: "eliasmeinecke-uni-frankfurt"
+project: "bachelorthesis"
+
+group: "testing"  # testing, lr-sweep, baseline, crop
+job_type: "linear_eval"  # pretrain, linear_eval, background_study?
