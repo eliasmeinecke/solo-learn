@@ -78,30 +78,6 @@ class MoCoV3(BaseMomentumMethod):
                 proj_output_dim,
                 last_bn=False,
             )
-        else:
-            # specifically for ViT but allow all the other backbones
-            # projector
-            self.projector = self._build_mlp(
-                layers_proj,
-                self.features_dim,
-                proj_hidden_dim,
-                proj_output_dim,
-            )
-            # momentum projector
-            self.momentum_projector = self._build_mlp(
-                layers_proj,
-                self.features_dim,
-                proj_hidden_dim,
-                proj_output_dim,
-            )
-
-            # predictor
-            self.predictor = self._build_mlp(
-                layers_pred,
-                proj_output_dim,
-                pred_hidden_dim,
-                proj_output_dim,
-            )
 
         initialize_momentum_params(self.projector, self.momentum_projector)
 

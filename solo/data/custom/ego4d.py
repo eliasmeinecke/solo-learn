@@ -24,10 +24,10 @@ class Ego4d(Dataset):
         self.time_window = time_window
         self.transform = transform
 
-        self.foveation = build_foveation(fov_type)  # hard coded with "gaze_crop" works - issue has to be parameter
+        self.foveation = build_foveation(fov_type)
 
-        print("Ego4d init time_window:", self.time_window)
-        print("Ego4d init foveation_type:", self.foveation)
+        print("Ego4d init time_window:", time_window)
+        print("Ego4d init foveation_type:", fov_type)
 
         self.hdf5_file = h5py.File(self.root / "ego4d_diverse_subset.h5", "r")
         self.annot = pd.read_parquet(self.root / "annot.parquet")
@@ -64,7 +64,7 @@ class Ego4d(Dataset):
 
         img_pair = self.open_image(new_idx) 
 
-        if self.foveation is not Not:
+        if self.foveation is not None:
             img = self.foveation(img, dp)
             img_pair = self.foveation(img_pair, new_dp)
 

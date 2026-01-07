@@ -72,6 +72,8 @@ def add_and_assert_wandb_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
     cfg.wandb.entity = omegaconf_select(cfg, "wandb.entity", None)
     cfg.wandb.project = omegaconf_select(cfg, "wandb.project", "solo-learn")
     cfg.wandb.offline = omegaconf_select(cfg, "wandb.offline", False)
+    cfg.wandb.group = omegaconf_select(cfg, "wandb.group", None)
+    cfg.wandb.job_type = omegaconf_select(cfg, "wandb.job_type", None)
 
     return cfg
 
