@@ -80,9 +80,7 @@ def build_foveation(fov_type):
         return None
 
     if fov_type == "gaze_crop":
-        return GazeCenteredCrop(
-            crop_size=336
-        )
+        return GazeCenteredCrop()
 
     # insert other types here
 

@@ -8,6 +8,101 @@ from PIL import Image
 from pathlib import Path
 
 from foveation.gaze_crop import GazeCenteredCrop
+from foveation.radial_blur import RadialBlurFoveation
+from foveation.log_polar import LogPolarTransform
+from foveation.fcg import FovealCartesianGeometry
+
+
+def main():
+    ANNOT_PATH = "/home/data/elias/Ego4dDivSubset/annot.parquet"
+    H5_PATH = "/home/data/elias/Ego4dDivSubset/ego4d_diverse_subset.h5"
+
+    i = 100_003
+
+    df = pd.read_parquet(ANNOT_PATH)
+
+    with h5py.File(H5_PATH, "r") as hf:
+        frame = hf.get("frames")[i]
+        saliency = hf.get("saliency")[i]
+        frame = Image.open(io.BytesIO(frame))
+    
+    # methods: crop, blur, log-polar, fcg, (tbc)
+    method = "fcg"
+    viz_fov(df, i, frame, method)
+    
+    # viz_fcg()
+    # viz_saliency(df, i, frame, saliency)
+
+
+def viz_fov(df, index, frame, method):
+    
+    row = df.iloc[index]
+    x_g, y_g = row.gaze_loc_x, row.gaze_loc_y
+
+    if method == "crop":
+        out = GazeCenteredCrop()(frame, row)
+    elif method == "blur":  # wip
+        out = RadialBlurFoveation()(frame, row)
+    elif method == "log-polar":  # wip
+        out = LogPolarTransform()(frame, row)
+    elif method == "fcg":  # wip
+        out = FovealCartesianGeometry()(frame, row)
+    elif method == "(tbc)":  # wip
+        out = frame
+    else:
+        out = frame
+
+    plt.figure(figsize=(8, 4))
+    plt.subplot(1, 2, 1)
+    plt.title("Original")
+    plt.imshow(frame)
+    plt.scatter(x_g, y_g, c="red", s=20)
+    plt.axis("off")
+
+    plt.subplot(1, 2, 2)
+    plt.title("Foveation")
+    plt.imshow(out)
+    plt.scatter(x_g, y_g, c="red", s=20)
+    plt.axis("off")
+
+    plt.tight_layout()
+
+    file_name = f"ego4d_{method}_example.png"
+    base_dir = Path(__file__).resolve().parent
+    out_path = base_dir / "plots" / method / file_name
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=200)
+
+    print(f"Saved {file_name}")  
+    
+
+def viz_fcg():
+    # visualizes "mapping onto rings of original image"
+    fcg = FovealCartesianGeometry(p0=15, pmax=100, nR=30)
+    canvas = np.zeros((fcg.fovea_size, fcg.fovea_size), dtype=np.int32)
+
+    R = 200  # toy image radius
+
+    for y in range(-R, R):
+        for x in range(-R, R):
+            xp, yp = fcg.mapping(x, y)
+            if 0 <= xp < fcg.fovea_size and 0 <= yp < fcg.fovea_size:
+                canvas[yp, xp] += 1
+
+    plt.figure(figsize=(6, 6))
+    plt.imshow(canvas, cmap="gray")
+    plt.title("FCG mapping → foveal rings")
+    plt.axis("off")
+    
+    file_name = f"ego4d_fcg_map_example.png"
+    base_dir = Path(__file__).resolve().parent
+    out_path = base_dir / "plots" / "fcg_map" / file_name
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=200)
+
+    print(f"Saved {file_name}")   
 
 
 def viz_saliency(df, index, frame, saliency):
@@ -29,61 +124,8 @@ def viz_saliency(df, index, frame, saliency):
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=200)
 
-    print("Saved ego4d_example.png")
-
-
-def viz_fov(df, index, frame, method):
-    
-    row = df.iloc[index]
-
-    if method == "crop":
-        crop = GazeCenteredCrop(crop_size=240)
-        out = crop(frame, row)
-    elif method == "blur":  # to be implemented
-        pass  
-    elif method == "log_polar":  # to be implemented
-        pass
-    else:
-        out = frame
-
-    plt.figure(figsize=(8, 4))
-    plt.subplot(1, 2, 1)
-    plt.title("Original")
-    plt.imshow(frame)
-    plt.axis("off")
-
-    plt.subplot(1, 2, 2)
-    plt.title("Foveation")
-    plt.imshow(out)
-    plt.axis("off")
-
-    plt.tight_layout()
-
-    base_dir = Path(__file__).resolve().parent
-    out_path = base_dir / "plots" / method / "ego4d_crop_example.png"
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(out_path, dpi=200)
-
-    print("Saved crop_example.png")    
+    print("Saved ego4d_example.png")  
 
 
 if __name__ == "__main__":
-    ANNOT_PATH = "/home/data/elias/Ego4dDivSubset/annot.parquet"
-    H5_PATH = "/home/data/elias/Ego4dDivSubset/ego4d_diverse_subset.h5"
-
-    i = 100_001
-
-    df = pd.read_parquet(ANNOT_PATH)
-
-    with h5py.File(H5_PATH, "r") as hf:
-        frame = hf.get("frames")[i]
-        saliency = hf.get("saliency")[i]
-
-        frame = Image.open(io.BytesIO(frame))
-    
-    # methods: crop, blur, log_polar, ...
-    method = "crop"
-
-    # viz_saliency(df, i, frame, saliency)
-    viz_fov(df, i, frame, method)
+    main()

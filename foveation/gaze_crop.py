@@ -5,7 +5,7 @@ from foveation.base import Foveation
 
 
 class GazeCenteredCrop(Foveation):
-    def __init__(self, crop_size: int):
+    def __init__(self, crop_size: int = 336):
         self.N = crop_size
 
     def __call__(self, img: Image.Image, annot: pd.Series) -> Image.Image:
