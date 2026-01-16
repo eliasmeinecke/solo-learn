@@ -11,7 +11,7 @@ hydra:
   run:
     dir: .
 
-name: "mocov3-ego4d-insertpurpose"
+name: "mocov3-ego4d-lr28"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -37,13 +37,13 @@ data:
 optimizer:
   name: "lars"
   batch_size: 256
-  lr: 2.4
+  lr: 2.8
   classifier_lr: 3e-3
   weight_decay: 1e-6
   no_labels: True
 scheduler:
   name: "warmup_cosine"
-  warmup_epochs: 0.01
+  warmup_epochs: 2
 checkpoint:
   enabled: True
   dir: "trained_models"

@@ -274,8 +274,8 @@ def build_transform_pipeline(dataset, cfg):
     if cfg.grayscale.prob:
         augmentations.append(transforms.RandomGrayscale(p=cfg.grayscale.prob))
 
-    if cfg.gaussian_blur.prob:
-        augmentations.append(transforms.RandomApply([GaussianBlur()], p=cfg.gaussian_blur.prob))
+    # if cfg.gaussian_blur.prob:
+    #    augmentations.append(transforms.RandomApply([GaussianBlur()], p=cfg.gaussian_blur.prob))
 
     if cfg.solarization.prob:
         augmentations.append(transforms.RandomApply([Solarization()], p=cfg.solarization.prob))

@@ -10,6 +10,8 @@ from PIL import Image
 from torch.utils.data import Dataset
 
 from foveation.gaze_crop import GazeCenteredCrop
+from foveation.radial_blur import RadialBlurFoveation
+from foveation.fcg import FovealCartesianGeometry
 
 
 class Ego4d(Dataset):
@@ -34,6 +36,9 @@ class Ego4d(Dataset):
     def open_image(self, idx: int) -> Image.Image:
         bin_img = self.hdf5_file.get("frames")[idx]
         img = Image.open(io.BytesIO(bin_img)).convert("RGB")
+        # convert from BGR to RGB
+        img = np.array(img)[:, :, ::-1]
+        img = Image.fromarray(img)
         return img
 
     def __len__(self) -> int:
@@ -70,18 +75,18 @@ class Ego4d(Dataset):
         return self.transform(img, img_pair), -1
 
 
-# maybe move to own "factory" file
+# maybe move to own "factory" file when playing around with more parameters
 def build_foveation(fov_type):
     
     if fov_type is None:
         return None
-
-    if fov_type == "none":
+    elif fov_type == "none":
         return None
-
-    if fov_type == "gaze_crop":
+    elif fov_type == "crop":
         return GazeCenteredCrop()
-
-    # insert other types here
-
-    raise ValueError(f"Unknown foveation type: {fov_type}") 
+    elif fov_type == "blur":
+        return RadialBlurFoveation()
+    elif fov_type == "fcg":
+        return FovealCartesianGeometry()
+    else:
+        raise ValueError(f"Unknown foveation type: {fov_type}") 

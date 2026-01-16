@@ -9,7 +9,6 @@ from pathlib import Path
 
 from foveation.gaze_crop import GazeCenteredCrop
 from foveation.radial_blur import RadialBlurFoveation
-from foveation.log_polar import LogPolarTransform
 from foveation.fcg import FovealCartesianGeometry
 
 
@@ -24,14 +23,18 @@ def main():
     with h5py.File(H5_PATH, "r") as hf:
         frame = hf.get("frames")[i]
         saliency = hf.get("saliency")[i]
-        frame = Image.open(io.BytesIO(frame))
+        frame = Image.open(io.BytesIO(frame)).convert("RGB")
+        # convert from BGR to RGB
+        frame = np.array(frame)[:, :, ::-1]
+        frame = Image.fromarray(frame)
     
-    # methods: crop, blur, log-polar, fcg, (tbc)
-    method = "fcg"
-    viz_fov(df, i, frame, method)
+    # methods: crop, blur, fcg
+    viz_fov(df, i, frame, "crop")
+    viz_fov(df, i, frame, "blur")
+    viz_fov(df, i, frame, "fcg")
     
-    # viz_fcg()
-    # viz_saliency(df, i, frame, saliency)
+    # viz_fcg_rings()
+    viz_saliency(df, i, frame, saliency)
 
 
 def viz_fov(df, index, frame, method):
@@ -43,12 +46,8 @@ def viz_fov(df, index, frame, method):
         out = GazeCenteredCrop()(frame, row)
     elif method == "blur":  # wip
         out = RadialBlurFoveation()(frame, row)
-    elif method == "log-polar":  # wip
-        out = LogPolarTransform()(frame, row)
     elif method == "fcg":  # wip
         out = FovealCartesianGeometry()(frame, row)
-    elif method == "(tbc)":  # wip
-        out = frame
     else:
         out = frame
 
@@ -77,7 +76,7 @@ def viz_fov(df, index, frame, method):
     print(f"Saved {file_name}")  
     
 
-def viz_fcg():
+def viz_fcg_rings():
     # visualizes "mapping onto rings of original image"
     fcg = FovealCartesianGeometry(p0=15, pmax=100, nR=30)
     canvas = np.zeros((fcg.fovea_size, fcg.fovea_size), dtype=np.int32)
@@ -123,7 +122,6 @@ def viz_saliency(df, index, frame, saliency):
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=200)
-
     print("Saved ego4d_example.png")  
 
 
