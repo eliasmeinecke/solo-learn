@@ -1,28 +1,15 @@
 
 from PIL import Image
-import torchvision.transforms as T
-
-from foveation.gaze_crop import GazeCenteredCrop
+from foveation.methods.gaze_crop import GazeCenteredCrop
 
 
-
-def test_transform(transform):
-    # Test if transform is created correctly
-    
-    img = Image.open("test").convert("RGB")
-
-    x = transform(img)
-
-    print(type(x))
-    print(x.shape)
-
-
+def test_method(method):
+    """
+    Ensure that foveation method works and keeps the right format.
+    """
+    pass
 
 
 if __name__ == "__main__":
-    # Define transform to be tested here
-    transform = T.Compose([
-            GazeCenteredCrop(240, gaze=(358, 358)),
-            T.ToTensor()
-        ])
-    test_transform(transform)
+    method = "insert method"    
+    test_method(method)

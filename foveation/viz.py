@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from pathlib import Path
 
-from foveation.gaze_crop import GazeCenteredCrop
-from foveation.radial_blur import RadialBlurFoveation
-from foveation.fcg import FovealCartesianGeometry
+from foveation.methods.gaze_crop import GazeCenteredCrop
+from foveation.methods.radial_blur import RadialBlurFoveation
+from foveation.methods.fcg import FovealCartesianGeometry
 
 
 def main():
@@ -29,12 +29,10 @@ def main():
         frame = Image.fromarray(frame)
     
     # methods: crop, blur, fcg
-    viz_fov(df, i, frame, "crop")
-    viz_fov(df, i, frame, "blur")
     viz_fov(df, i, frame, "fcg")
     
     # viz_fcg_rings()
-    viz_saliency(df, i, frame, saliency)
+    # viz_saliency(df, i, frame, saliency)
 
 
 def viz_fov(df, index, frame, method):
@@ -42,6 +40,8 @@ def viz_fov(df, index, frame, method):
     row = df.iloc[index]
     x_g, y_g = row.gaze_loc_x, row.gaze_loc_y
 
+    print(f"{method} input size: {frame.size}")
+    
     if method == "crop":
         out = GazeCenteredCrop()(frame, row)
     elif method == "blur":  # wip
@@ -50,6 +50,8 @@ def viz_fov(df, index, frame, method):
         out = FovealCartesianGeometry()(frame, row)
     else:
         out = frame
+    
+    print(f"{method} output size: {out.size}")
 
     plt.figure(figsize=(8, 4))
     plt.subplot(1, 2, 1)

@@ -33,8 +33,6 @@ from torchvision.datasets import STL10, ImageFolder
 
 from solo.data.custom.ego4d import Ego4d
 
-# foveation
-from foveation.gaze_crop import GazeCenteredCrop
 
 try:
     from solo.data.h5_dataset import H5Dataset

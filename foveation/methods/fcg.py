@@ -3,7 +3,7 @@ import numpy as np
 from PIL import Image
 import pandas as pd
 import math
-from foveation.base import Foveation
+from foveation.methods.base import Foveation
 
 """
 Implementation of:
@@ -104,4 +104,9 @@ class FovealCartesianGeometry(Foveation):
                     out[yp, xp] = img_np[y, x]
                 # outside periphery - remain black
 
-        return Image.fromarray(out)
+        out = Image.fromarray(out)
+        
+        return out.resize(
+            (540, 540),
+            resample=Image.BILINEAR
+        )

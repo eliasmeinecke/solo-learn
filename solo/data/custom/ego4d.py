@@ -9,9 +9,7 @@ import pandas as pd
 from PIL import Image
 from torch.utils.data import Dataset
 
-from foveation.gaze_crop import GazeCenteredCrop
-from foveation.radial_blur import RadialBlurFoveation
-from foveation.fcg import FovealCartesianGeometry
+from foveation.foveation_factory import build_foveation
 
 
 class Ego4d(Dataset):
@@ -75,18 +73,3 @@ class Ego4d(Dataset):
         return self.transform(img, img_pair), -1
 
 
-# maybe move to own "factory" file when playing around with more parameters
-def build_foveation(fov_type):
-    
-    if fov_type is None:
-        return None
-    elif fov_type == "none":
-        return None
-    elif fov_type == "crop":
-        return GazeCenteredCrop()
-    elif fov_type == "blur":
-        return RadialBlurFoveation()
-    elif fov_type == "fcg":
-        return FovealCartesianGeometry()
-    else:
-        raise ValueError(f"Unknown foveation type: {fov_type}") 

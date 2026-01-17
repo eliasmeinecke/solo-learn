@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 from PIL import Image
 import pandas as pd
-from foveation.base import Foveation
+from foveation.methods.base import Foveation
 
 """
 All credit goes to:

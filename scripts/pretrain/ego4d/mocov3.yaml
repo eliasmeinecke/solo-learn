@@ -11,7 +11,7 @@ hydra:
   run:
     dir: .
 
-name: "mocov3-ego4d-lr28"
+name: "mocov3-ego4d-lr34"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -37,7 +37,7 @@ data:
 optimizer:
   name: "lars"
   batch_size: 256
-  lr: 2.8
+  lr: 3.4
   classifier_lr: 3e-3
   weight_decay: 1e-6
   no_labels: True
