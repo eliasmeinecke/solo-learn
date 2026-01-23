@@ -46,9 +46,12 @@ class Ego4d(Dataset):
         dp: pd.Series = self.annot.iloc[idx]
         img = self.open_image(idx)
         
+        saliency = self.hdf5_file.get("saliency")[idx]
+        saliency = saliency.astype(np.float32)
+        
         if self.time_window == 0:
             if self.foveation is not None:
-                img = self.foveation(img, dp)
+                img = self.foveation(img, dp, saliency)
             return self.transform(img, img), -1
 
         new_video_name, new_idx, try_cpt = "", idx, 0
@@ -67,8 +70,8 @@ class Ego4d(Dataset):
         img_pair = self.open_image(new_idx) 
 
         if self.foveation is not None:
-            img = self.foveation(img, dp)
-            img_pair = self.foveation(img_pair, new_dp)
+            img = self.foveation(img, dp, saliency)
+            img_pair = self.foveation(img_pair, new_dp, saliency)
 
         return self.transform(img, img_pair), -1
 

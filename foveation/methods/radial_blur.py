@@ -5,140 +5,50 @@ from PIL import Image
 import pandas as pd
 from foveation.methods.base import Foveation
 
-"""
-All credit goes to:
-https://github.com/ouyangzhibo/Image_Foveation_Python
-"""
-
 
 class RadialBlurFoveation(Foveation):
-    def __init__(self):
-        pass
+    def __init__(self, radii=[32, 64, 128, 256], sigmas=[0.0, 0.5, 1.5, 3.0, 6.0], saliency_alpha=1.0):
         
-    def __call__(self, img: Image.Image, annot: pd.Series) -> Image.Image:
+        assert len(sigmas) == len(radii) + 1, (
+            f"Got {len(sigmas)} sigmas for {len(radii)+1} rings."
+        )
+        
+        self.radii = radii
+        self.sigmas = sigmas
+        self.saliency_alpha = saliency_alpha
+
+    def __call__(self, img: Image.Image, annot: pd.Series, saliency: np.ndarray) -> Image.Image:
+        
+        img_np = np.array(img)
+        H, W, _ = img_np.shape
+
         x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
-        im = pil_to_cv2(img)
-        im_fov = foveat_img(im, [(x_g, y_g)])
-        return cv2_to_pil(im_fov)
+        
+        S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
+        S = S.astype(np.float32)
+        S = (S - S.min()) / (S.max() - S.min() + 1e-6)
 
+        ys = np.arange(H)
+        xs = np.arange(W)
+        X, Y = np.meshgrid(xs, ys)
 
-def pil_to_cv2(img_pil):
-    img = np.array(img_pil)
-    return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        R = np.sqrt((X - x_g)**2 + (Y - y_g)**2)
+        R_eff = R / (1.0 + self.saliency_alpha * S)
 
-
-def cv2_to_pil(img_cv):
-    img = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
-    return Image.fromarray(img)
-
-
-def genGaussiankernel(width, sigma):
-    x = np.arange(-int(width/2), int(width/2)+1, 1, dtype=np.float32)
-    x2d, y2d = np.meshgrid(x, x)
-    kernel_2d = np.exp(-(x2d ** 2 + y2d ** 2) / (2 * sigma ** 2))
-    kernel_2d = kernel_2d / np.sum(kernel_2d)
-    return kernel_2d
-
-def pyramid(im, sigma=1, prNum=6):
-    height_ori, width_ori, ch = im.shape
-    G = im.copy()
-    pyramids = [G]
-    
-    # gaussian blur
-    Gaus_kernel2D = genGaussiankernel(5, sigma)
-    
-    # downsample
-    for i in range(1, prNum):
-        G = cv2.filter2D(G, -1, Gaus_kernel2D)
-        height, width, _ = G.shape
-        G = cv2.resize(G, (int(width/2), int(height/2)))
-        pyramids.append(G)
-    
-    
-    # upsample
-    for i in range(1, 6):
-        curr_im = pyramids[i]
-        for j in range(i):
-            if j < i-1:
-                im_size = (curr_im.shape[1]*2, curr_im.shape[0]*2)
+        blurred_imgs = []
+        for sigma in self.sigmas:
+            if sigma == 0:
+                blurred_imgs.append(img_np)
             else:
-                im_size = (width_ori, height_ori)
-            curr_im = cv2.resize(curr_im, im_size)
-            curr_im = cv2.filter2D(curr_im, -1, Gaus_kernel2D)
-        pyramids[i] = curr_im
+                blurred_imgs.append(cv2.GaussianBlur(img_np, (0, 0), sigma))  # let opencv calculate kernel size
 
-    return pyramids
+        output = np.zeros_like(img_np, dtype=np.float32)
 
-def foveat_img(im, fixs):
-    """
-    im: input image
-    fixs: sequences of fixations of form [(x1, y1), (x2, y2), ...]
-    
-    This function outputs the foveated image with given input image and fixations.
-    """
-    sigma=0.248
-    prNum = 6
-    As = pyramid(im, sigma, prNum)
-    height, width, _ = im.shape
-    
-    # compute coef
-    p = 7.5
-    k = 3
-    alpha = 2.5
+        for i in range(len(self.sigmas)):
+            r_min = 0 if i == 0 else self.radii[i-1]
+            r_max = self.radii[i] if i < len(self.radii) else np.inf
 
-    x = np.arange(0, width, 1, dtype=np.float32)
-    y = np.arange(0, height, 1, dtype=np.float32)
-    x2d, y2d = np.meshgrid(x, y)
-    theta = np.sqrt((x2d - fixs[0][0]) ** 2 + (y2d - fixs[0][1]) ** 2) / p
-    for fix in fixs[1:]:
-        theta = np.minimum(theta, np.sqrt((x2d - fix[0]) ** 2 + (y2d - fix[1]) ** 2) / p)
-    R = alpha / (theta + alpha)
-    
-    Ts = []
-    for i in range(1, prNum):
-        Ts.append(np.exp(-((2 ** (i-3)) * R / sigma) ** 2 * k))
-    Ts.append(np.zeros_like(theta))
+            mask = (R_eff >= r_min) & (R_eff < r_max)
+            output += mask[..., None] * blurred_imgs[i]
 
-    # omega
-    omega = np.zeros(prNum)
-    for i in range(1, prNum):
-        omega[i-1] = np.sqrt(np.log(2)/k) / (2**(i-3)) * sigma
-
-    omega[omega>1] = 1
-
-    # layer index
-    layer_ind = np.zeros_like(R)
-    for i in range(1, prNum):
-        ind = np.logical_and(R >= omega[i], R <= omega[i - 1])
-        layer_ind[ind] = i
-
-    # B
-    Bs = []
-    for i in range(1, prNum):
-        Bs.append((0.5 - Ts[i]) / (Ts[i-1] - Ts[i] + 1e-5))
-
-    # M
-    Ms = np.zeros((prNum, R.shape[0], R.shape[1]))
-
-    for i in range(prNum):
-        ind = layer_ind == i
-        if np.sum(ind) > 0:
-            if i == 0:
-                Ms[i][ind] = 1
-            else:
-                Ms[i][ind] = 1 - Bs[i-1][ind]
-
-        ind = layer_ind - 1 == i
-        if np.sum(ind) > 0:
-            Ms[i][ind] = Bs[i][ind]
-
-    print('num of full-res pixel', np.sum(Ms[0] == 1))
-    # generate periphery image
-    im_fov = np.zeros_like(As[0], dtype=np.float32)
-    for M, A in zip(Ms, As):
-        for i in range(3):
-            im_fov[:, :, i] += np.multiply(M, A[:, :, i])
-
-    im_fov = im_fov.astype(np.uint8)
-    return im_fov
-
+        return Image.fromarray(output.astype(np.uint8))

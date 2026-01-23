@@ -6,7 +6,7 @@ import math
 from foveation.methods.base import Foveation
 
 """
-Implementation of:
+Implementation of table 2 of:
 "A NEW FOVEAL CARTESIAN GEOMETRY APPROACH USED FOR OBJECT TRACKING" - José Martínez, Leopoldo Altamirano
 """
 
@@ -83,14 +83,14 @@ class FovealCartesianGeometry(Foveation):
         return x, y
     
     
-    def __call__(self, img: Image.Image, annot: pd.Series) -> Image.Image:
+    def __call__(self, img: Image.Image, annot: pd.Series, saliency: np.ndarray) -> Image.Image:
         
         img_np = np.array(img)
         
         H, W, C = img_np.shape
 
-        
-        # change to gaze_center (annot.gaze_loc_x / y) and add resize!
+        # change to gaze_center (annot.gaze_loc_x / y)
+        # x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
         x0 = W // 2
         y0 = H // 2
         

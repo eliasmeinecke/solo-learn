@@ -29,13 +29,13 @@ def main():
         frame = Image.fromarray(frame)
     
     # methods: crop, blur, fcg
-    viz_fov(df, i, frame, "fcg")
+    viz_fov(df, i, frame, saliency, "blur")
     
     # viz_fcg_rings()
     # viz_saliency(df, i, frame, saliency)
 
 
-def viz_fov(df, index, frame, method):
+def viz_fov(df, index, frame, saliency, method):
     
     row = df.iloc[index]
     x_g, y_g = row.gaze_loc_x, row.gaze_loc_y
@@ -43,11 +43,11 @@ def viz_fov(df, index, frame, method):
     print(f"{method} input size: {frame.size}")
     
     if method == "crop":
-        out = GazeCenteredCrop()(frame, row)
+        out = GazeCenteredCrop()(frame, row, saliency)
     elif method == "blur":  # wip
-        out = RadialBlurFoveation()(frame, row)
+        out = RadialBlurFoveation()(frame, row, saliency)
     elif method == "fcg":  # wip
-        out = FovealCartesianGeometry()(frame, row)
+        out = FovealCartesianGeometry()(frame, row, saliency)
     else:
         out = frame
     
