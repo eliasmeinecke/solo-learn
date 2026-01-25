@@ -3,6 +3,7 @@ import io
 import numpy as np
 import pandas as pd
 import h5py
+import cv2
 import matplotlib.pyplot as plt
 from PIL import Image
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 from foveation.methods.gaze_crop import GazeCenteredCrop
 from foveation.methods.radial_blur import RadialBlurFoveation
 from foveation.methods.fcg import FovealCartesianGeometry
+from foveation.methods.fcg_paper import FovealCartesianGeometryPaper
 
 
 def main():
@@ -28,26 +30,37 @@ def main():
         frame = np.array(frame)[:, :, ::-1]
         frame = Image.fromarray(frame)
     
+    annot = df.iloc[i]
+    saliency = saliency.astype(np.float32)
+    
     # methods: crop, blur, fcg
-    viz_fov(df, i, frame, saliency, "blur")
+    # viz_fov(annot, frame, saliency, "fcg")
     
-    # viz_fcg_rings()
-    # viz_saliency(df, i, frame, saliency)
+    make_grid_image(256, 3)
+    
+    # viz_blur_heatmaps(annot, frame, saliency)
+    # viz_saliency(annot, frame, saliency)
+    # viz_fcg_rings_paper()
+    # viz_fcg_grids(annot, frame, saliency)
 
 
-def viz_fov(df, index, frame, saliency, method):
+def viz_fov(annot, frame, saliency, method):
     
-    row = df.iloc[index]
-    x_g, y_g = row.gaze_loc_x, row.gaze_loc_y
+    img_np = np.array(frame)
+    H, W, _ = img_np.shape
+
+    x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
+    S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
+    S = (S - S.min()) / (S.max() - S.min() + 1e-6)
 
     print(f"{method} input size: {frame.size}")
     
     if method == "crop":
-        out = GazeCenteredCrop()(frame, row, saliency)
+        out = GazeCenteredCrop()(frame, annot, S)
     elif method == "blur":  # wip
-        out = RadialBlurFoveation()(frame, row, saliency)
+        out = RadialBlurFoveation()(frame, annot, S)
     elif method == "fcg":  # wip
-        out = FovealCartesianGeometry()(frame, row, saliency)
+        out = FovealCartesianGeometry()(frame, annot, S)
     else:
         out = frame
     
@@ -74,13 +87,196 @@ def viz_fov(df, index, frame, saliency, method):
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=200)
+    plt.close()
 
     print(f"Saved {file_name}")  
+
+
+def viz_blur_heatmaps(annot, frame, saliency):
+    radii = [32, 64, 128, 256]
+    sigmas = [0.0, 0.5, 1.5, 3.0, 6.0]
+    saliency_alpha = 1.0
+    transition_width = 32
+
+    img_np = np.array(frame)
+    H, W, _ = img_np.shape
+
+    x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
+
+    # --- saliency ---
+    S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
+    S = S.astype(np.float32)
+    S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+
+    # --- coordinate grid ---
+    ys = np.arange(H)
+    xs = np.arange(W)
+    X, Y = np.meshgrid(xs, ys)
+
+    # --- distances ---
+    R = np.sqrt((X - x_g)**2 + (Y - y_g)**2)
+    R_eff = R / (1.0 + saliency_alpha * S)
+
+    # --- ring centers ---
+    ring_centers = []
+    prev = 0.0
+    for r in radii:
+        ring_centers.append(0.5 * (prev + r))
+        prev = r
+    ring_centers.append(prev + transition_width)
+
+    # --- gaussian weights ---
+    weights = []
+    for c in ring_centers:
+        w = np.exp(-0.5 * ((R_eff - c) / transition_width) ** 2)
+        weights.append(w)
+
+    weights = np.stack(weights, axis=0)
+    weight_sum = np.sum(weights, axis=0)
+    weights /= weight_sum + 1e-6
+
+    # --- plotting ---
+    fig, axes = plt.subplots(2, 4, figsize=(18, 9))
+
+    # --- Row 1: Inputs & geometry ---
+    axes[0, 0].imshow(img_np)
+    axes[0, 0].scatter(x_g, y_g, c="red", s=30)
+    axes[0, 0].set_title("Input Frame + Gaze")
+
+    axes[0, 1].imshow(np.log(R + 1), cmap="inferno")
+    axes[0, 1].set_title("Distance R (log)")
+
+    axes[0, 2].imshow(weights[0], cmap="viridis")
+    axes[0, 2].set_title("Weight: Sharp (σ=0)")
+
+    axes[0, 3].imshow(weights[-1], cmap="viridis")
+    axes[0, 3].set_title(f"Weight: Strong (σ={sigmas[-1]})")
+
+    # --- Row 2: Attention & effects ---
+    axes[1, 0].imshow(S, cmap="magma")
+    axes[1, 0].set_title("Saliency Map")
+
+    axes[1, 1].imshow(np.log(R_eff + 1), cmap="inferno")
+    axes[1, 1].set_title("Effective Distance R_eff (log)")
+
+    mid = len(weights) // 2
+    axes[1, 2].imshow(weights[mid], cmap="viridis")
+    axes[1, 2].set_title(f"Weight: Mid (σ={sigmas[mid]})")
+
+    diff = R - R_eff
+    axes[1, 3].imshow(diff, cmap="coolwarm")
+    axes[1, 3].set_title("Distance Reduction (R − R_eff)")
+
+    for ax in axes.flat:
+        ax.axis("off")
+
+    plt.tight_layout()
+
+    # --- save ---
+    file_name = "ego4d_blur_heatmaps_example.png"
+    out_path = Path(__file__).resolve().parent / "plots" / "blur_heatmaps" / file_name
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=200)
+    plt.close()
+
+    print(f"Saved {file_name}")   
+    
+    
+def viz_fcg_grids(annot, frame, saliency):
+
+    # --- prepare fcg with and without saliency ---
+    fcg_no_sal = FovealCartesianGeometry(p0=32, alpha=0.5, beta=0.0)
+    fcg_sal    = FovealCartesianGeometry(p0=32, alpha=0.5, beta=1.0)
+    
+    # --- prepare saliency ---
+    img_np = np.array(frame)
+    H, W, _ = img_np.shape
+
+    S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
+    S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+
+    
+    # --- apply FCG to real image ---
+    img_no_sal = fcg_no_sal(frame, annot, S)
+    img_sal    = fcg_sal(frame, annot, S)
+
+    # --- grid visualization ---
+    grid = make_grid_image(min(H, W), step=24)
+    grid_no_sal = fcg_no_sal(grid, annot, S)
+    grid_sal    = fcg_sal(grid, annot, S)
+
+    # --- plotting ---
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+
+    # row 1: real image
+    axes[0, 0].imshow(frame)
+    axes[0, 0].scatter(annot.gaze_loc_x, annot.gaze_loc_y, c="red", s=30)
+    axes[0, 0].set_title("Input + Gaze")
+
+    axes[0, 1].imshow(img_no_sal)
+    axes[0, 1].set_title("FCG (no saliency)")
+
+    axes[0, 2].imshow(img_sal)
+    axes[0, 2].set_title("FCG (with saliency)")
+
+    # row 2: geometry
+    axes[1, 0].imshow(S, cmap="magma")
+    axes[1, 0].set_title("Saliency Map")
+    
+    axes[1, 1].imshow(grid_no_sal)
+    axes[1, 1].set_title("Geometry (no saliency)")
+
+    axes[1, 2].imshow(grid_sal)
+    axes[1, 2].set_title("Geometry (with saliency)")
+
+    for ax in axes.flat:
+        ax.axis("off")
+
+    # --- save ---
+    file_name = "ego4d_fcg_grids_example.png"
+    out_path = Path(__file__).resolve().parent / "plots" / "fcg_grids" / file_name
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=200)
+    plt.close()
+
+    print(f"Saved {file_name}") 
+    
+    
+def make_grid_image(size, step=16):
+    img = np.ones((size, size, 3), dtype=np.uint8) * 255
+
+    for y in range(0, size, step):
+        img[y:y+1, :, :] = 0
+    for x in range(0, size, step):
+        img[:, x:x+1, :] = 0
+    
+    return Image.fromarray(img)
     
 
-def viz_fcg_rings():
+def viz_saliency(annot, frame, saliency):
+    flat_max = saliency.argmax()
+    max_x, max_y = flat_max % 64, flat_max // 64
+    fig, ax = plt.subplots(1, 2)
+    ax[0].imshow(np.array(frame))
+    ax[1].imshow(saliency)
+    ax[0].axis("off")
+    ax[1].axis("off")
+    ax[0].scatter(annot.gaze_loc_x, annot.gaze_loc_y, c="red", s=50)
+    ax[1].scatter(max_x, max_y, c="red", s=50)
+    plt.tight_layout()
+    
+    base_dir = Path(__file__).resolve().parent
+    out_path = base_dir / "plots" / "ego4d" / "ego4d_example.png"
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=200)
+    plt.close()
+    print("Saved ego4d_example.png")  
+    
+    
+def viz_fcg_rings_paper():
     # visualizes "mapping onto rings of original image"
-    fcg = FovealCartesianGeometry(p0=15, pmax=100, nR=30)
+    fcg = FovealCartesianGeometryPaper(p0=15, pmax=100, nR=30)
     canvas = np.zeros((fcg.fovea_size, fcg.fovea_size), dtype=np.int32)
 
     R = 200  # toy image radius
@@ -99,32 +295,11 @@ def viz_fcg_rings():
     file_name = f"ego4d_fcg_map_example.png"
     base_dir = Path(__file__).resolve().parent
     out_path = base_dir / "plots" / "fcg_map" / file_name
-
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=200)
+    plt.close()
 
     print(f"Saved {file_name}")   
-
-
-def viz_saliency(df, index, frame, saliency):
-    row = df.iloc[index]
-    flat_max = saliency.argmax()
-    max_x, max_y = flat_max % 64, flat_max // 64
-    fig, ax = plt.subplots(1, 2)
-    ax[0].imshow(np.array(frame))
-    ax[1].imshow(saliency)
-    ax[0].axis("off")
-    ax[1].axis("off")
-    ax[0].scatter(row.gaze_loc_x, row.gaze_loc_y, c="red", s=50)
-    ax[1].scatter(max_x, max_y, c="red", s=50)
-    plt.tight_layout()
-    
-    base_dir = Path(__file__).resolve().parent
-    out_path = base_dir / "plots" / "ego4d" / "ego4d_example.png"
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(out_path, dpi=200)
-    print("Saved ego4d_example.png")  
 
 
 if __name__ == "__main__":

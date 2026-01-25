@@ -18,7 +18,4 @@ class GazeCenteredCrop(Foveation):
         
         crop = img.crop((x_cor - self.N//2, y_cor - self.N//2, x_cor + self.N//2, y_cor + self.N//2))
         
-        return crop.resize(
-            (540, 540),
-            resample=Image.BILINEAR
-        )
+        return crop.resize((540, 540), resample=Image.BILINEAR)

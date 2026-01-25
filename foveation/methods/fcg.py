@@ -2,111 +2,68 @@
 import numpy as np
 from PIL import Image
 import pandas as pd
-import math
 from foveation.methods.base import Foveation
-
-"""
-Implementation of table 2 of:
-"A NEW FOVEAL CARTESIAN GEOMETRY APPROACH USED FOR OBJECT TRACKING" - José Martínez, Leopoldo Altamirano
-"""
-
-
+        
+        
 class FovealCartesianGeometry(Foveation):
-    def __init__(self, p0=30, pmax=200, nR=60):
-        """
-        p0   : radius of fovea (in pixels)
-        pmax : ?
-        nR   : number of rings
-        """
+    def __init__(self, p0=32, alpha=0.5, beta=1.0):
         self.p0 = p0
-        self.pmax = pmax
-        self.nR = nR
+        self.alpha = alpha
+        self.beta = beta
 
-        self.prepare_geometry()
-        
-    def prepare_geometry(self):
-        
-        self.a = math.exp(math.log((self.pmax / self.p0)) / self.nR)
-        self.r = 0
+    def inverse_map(self, xp, yp, x0, y0, cx, cy, saliency_map):
+        dx = xp - cx
+        dy = yp - cy
 
-        ps = []
-        
-        self.gammas = [self.p0]
-        self.rings = []
-
-        for i in range(self.nR):
-            ps.append(math.floor(self.p0 * math.pow(self.a, i))) 
-            if ps[i] != self.gammas[self.r]:
-                self.r += 1
-                self.gammas.append(ps[i])
-            self.rings.append(self.r) 
-        
-        self.fovea_size = 2*(self.p0+self.r)+1
-        
-        self.fcx = self.fcy = self.fovea_size//2
-    
-    def mapping(self, x, y, x0=0, y0=0):
-        
-        x -= x0
-        y -= y0
-
-        p = max(abs(x), abs(y)) # has to be p instead of r, right?
-        
-        if p <= self.p0:
-            xp = x + self.fcx
-            yp = y + self.fcy
-        else:
-            eta = int(math.floor(math.log((p/self.p0), self.a))) # also has to be p instead of r, right?
-            eta = min(eta, len(self.rings) - 1) # added because indexerror occured :( fix this?
-            delta_roh_eta = (self.p0 + self.rings[eta]) / math.floor(self.p0 * math.pow(self.a, eta))
-            xp = int(math.floor(x * delta_roh_eta + self.fcx))
-            yp = int(math.floor(y * delta_roh_eta + self.fcy))
-
-        return xp, yp 
-
-    def inverse_mapping(self, xp, yp, x0, y0):
-
-        xp -= self.fcx
-        yp -= self.fcy
-
-        p = max(abs(xp), abs(yp))
+        p = max(abs(dx), abs(dy))
 
         if p <= self.p0:
-            x = xp + x0
-            y = yp + y0
+            s = 1.0
         else:
-            gamma = self.gammas[min(p - self.p0, len(self.gammas)-1)]
-            delta_roh_gamma = gamma / p
-            x = int(math.floor(xp * delta_roh_gamma + x0))
-            y = int(math.floor(yp * delta_roh_gamma + y0))
-        
+            # only approximation of salient region-value
+            xs = int(np.clip(x0 + dx, 0, saliency_map.shape[1] - 1))
+            ys = int(np.clip(y0 + dy, 0, saliency_map.shape[0] - 1))
+
+            S_val = saliency_map[ys, xs]
+
+            alpha_eff = self.alpha / (1.0 + self.beta * S_val)
+            s = (self.p0 / p) ** alpha_eff
+
+        x = int(dx / s + x0)
+        y = int(dy / s + y0)
+
         return x, y
-    
-    
+
     def __call__(self, img: Image.Image, annot: pd.Series, saliency: np.ndarray) -> Image.Image:
-        
         img_np = np.array(img)
-        
         H, W, C = img_np.shape
 
-        # change to gaze_center (annot.gaze_loc_x / y)
-        # x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
-        x0 = W // 2
-        y0 = H // 2
-        
-        out = np.zeros((self.fovea_size, self.fovea_size, C), dtype=img_np.dtype)
+        # normalize saliency just to be safe
+        S = saliency.astype(np.float32)
+        S = (S - S.min()) / (S.max() - S.min() + 1e-6)
 
-        for yp in range(self.fovea_size):
-            for xp in range(self.fovea_size):
-                x, y = self.inverse_mapping(xp, yp, x0, y0)
+        x0, y0 = annot.gaze_loc_x, annot.gaze_loc_y
 
+        out_size = min(H, W)
+        cx = cy = out_size // 2
+        out = np.zeros((out_size, out_size, C), dtype=img_np.dtype)
+
+        for yp in range(out_size):
+            for xp in range(out_size):
+                x, y = self.inverse_map(
+                    xp, yp, x0, y0, cx, cy, S
+                )
                 if 0 <= x < W and 0 <= y < H:
                     out[yp, xp] = img_np[y, x]
-                # outside periphery - remain black
+
+        valid_mask = np.any(out != 0, axis=-1)
+        ys, xs = np.where(valid_mask)
+
+        y_min, y_max = ys.min(), ys.max()
+        x_min, x_max = xs.min(), xs.max()
+
+        out = out[y_min:y_max+1, x_min:x_max+1]
 
         out = Image.fromarray(out)
         
-        return out.resize(
-            (540, 540),
-            resample=Image.BILINEAR
-        )
+        return out.resize((540, 540), resample=Image.BILINEAR)

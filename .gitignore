@@ -11,7 +11,7 @@ auto_umap/
 
 # datasets dir
 datasets/
-# foveation/visualisation
+# foveation/plots
 # saved models
 trained_models/
 *.pt
