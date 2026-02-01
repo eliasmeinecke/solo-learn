@@ -17,10 +17,10 @@ def build_foveation(fov_type):
     elif fov_type == "none":
         return None
     elif fov_type == "crop":
-        return GazeCenteredCrop()
+        return GazeCenteredCrop(crop_size=336)
     elif fov_type == "blur":
-        return RadialBlurFoveation()
+        return RadialBlurFoveation(radii=[32, 64, 128, 256], sigmas=[0.0, 0.5, 1.5, 3.0, 6.0], saliency_alpha=1.0, transition_width=32)
     elif fov_type == "fcg":
-        return FovealCartesianGeometry()
+        return FovealCartesianGeometry(p0=64, alpha=0.5, beta=1.0)
     else:
         raise ValueError(f"Unknown foveation type: {fov_type}") 

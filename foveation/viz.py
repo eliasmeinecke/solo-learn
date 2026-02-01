@@ -34,9 +34,7 @@ def main():
     saliency = saliency.astype(np.float32)
     
     # methods: crop, blur, fcg
-    # viz_fov(annot, frame, saliency, "fcg")
-    
-    make_grid_image(256, 3)
+    viz_fov(annot, frame, saliency, "fcg")
     
     # viz_blur_heatmaps(annot, frame, saliency)
     # viz_saliency(annot, frame, saliency)
@@ -57,10 +55,12 @@ def viz_fov(annot, frame, saliency, method):
     
     if method == "crop":
         out = GazeCenteredCrop()(frame, annot, S)
+        out.resize((540, 540), resample=Image.BILINEAR)
     elif method == "blur":  # wip
         out = RadialBlurFoveation()(frame, annot, S)
     elif method == "fcg":  # wip
         out = FovealCartesianGeometry()(frame, annot, S)
+        out.resize((540, 540), resample=Image.BILINEAR)
     else:
         out = frame
     

@@ -72,7 +72,7 @@ def augmentations_args(parser: ArgumentParser):
     # other augmentation probabilities
     parser.add_argument("--gray_scale_prob", type=float, default=[0.2], nargs="+")
     parser.add_argument("--horizontal_flip_prob", type=float, default=[0.5], nargs="+")
-    # parser.add_argument("--gaussian_prob", type=float, default=[0.5], nargs="+")
+    parser.add_argument("--gaussian_prob", type=float, default=[0.5], nargs="+")
     parser.add_argument("--solarization_prob", type=float, default=[0.0], nargs="+")
     parser.add_argument("--equalization_prob", type=float, default=[0.0], nargs="+")
 

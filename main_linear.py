@@ -189,7 +189,7 @@ def main(cfg: DictConfig):
             resume="allow" if wandb_run_id else None,
             id=wandb_run_id,
         )
-        wandb_logger.watch(model, log="gradients", log_freq=500)
+        wandb_logger.watch(model, log="gradients", log_freq=200)
         wandb_logger.log_hyperparams(OmegaConf.to_container(cfg))
 
         # lr logging

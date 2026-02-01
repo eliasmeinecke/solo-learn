@@ -11,7 +11,7 @@ hydra:
   run:
     dir: .
 
-name: "mocov3-ego4d-crop-test"
+name: "mocov3-ego4d-crop"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -36,19 +36,19 @@ data:
     fov_type: "crop"
 optimizer:
   name: "lars"
-  batch_size: 256
+  batch_size: 128
   lr: 3.0
   classifier_lr: 3e-3
   weight_decay: 1e-6
   no_labels: True
 scheduler:
   name: "warmup_cosine"
-  warmup_epochs: 2  # should be roughly 10% of total epochs
+  warmup_epochs: 10  # should be roughly 10% of total epochs
 checkpoint:
   enabled: True
   dir: "/home/data/elias/trained_models"
-  frequency: 1
-  keep_prev: False
+  frequency: 10
+  keep_prev: True
 auto_resume:
   enabled: True
 knn_clb:
@@ -64,8 +64,8 @@ knn_clb:
 
 
 # overwrite PL stuff
-max_epochs: 20
-devices: 2
+max_epochs: 100
+devices: 4
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: ddp
@@ -74,4 +74,4 @@ no_validation: True # important since we have no validation split
 limit_val_batches: 0
 num_sanity_val_steps: 0
 log_every_n_steps: 200 # increase for larger runs
-limit_train_batches: 0.25 # percentile or total batches (1.0 for full run)
+limit_train_batches: 1.0 # percentile or total batches (1.0 for full run)
