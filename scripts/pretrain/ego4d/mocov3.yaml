@@ -11,7 +11,7 @@ hydra:
   run:
     dir: .
 
-name: "mocov3-ego4d-crop-test"
+name: "fov-parameter-test"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -33,7 +33,18 @@ data:
   num_workers: 4
   dataset_kwargs:
     time_window: 15
-    fov_type: "crop"
+    foveation:
+      type: "fcg"
+      crop:
+        crop_size: 336
+      blur:
+      # change blur logic to include scalars for sigmas & rings!
+        saliency_alpha: 1.0
+        transition_width: 32
+      fcg:
+        p0: 64
+        alpha: 0.5
+        beta: 0.0
 optimizer:
   name: "lars"
   batch_size: 256

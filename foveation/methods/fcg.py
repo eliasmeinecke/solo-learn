@@ -6,7 +6,7 @@ from foveation.methods.base import Foveation
         
         
 class FovealCartesianGeometry(Foveation):
-    def __init__(self, p0=64, alpha=0.5, beta=1.0):
+    def __init__(self, p0=64, alpha=0.5, beta=0.0):
         self.p0 = p0
         self.alpha = alpha
         self.beta = beta
