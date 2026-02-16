@@ -1,0 +1,6 @@
+data_train_path: "/home/data/elias/Ego4dDivSubset"
+
+checkpoint_dir: "/home/data/elias/trained_models"
+
+knn_clb_train_path:  "/home/data/elias/imagenet100/train"
+knn_clb_val_path:  "/home/data/elias/imagenet100/val"

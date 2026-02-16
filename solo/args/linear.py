@@ -22,8 +22,11 @@ _N_CLASSES_PER_DATASET = {
     "stl10": 10,
     "imagenet": 1000,
     "imagenet100": 100,
+    "imagenet100_42": 100,
+    "imagenet1pct_42": 1000,
+    "imagenet10pct_42": 1000,
+    "imagenet_42": 1000
 }
-
 
 _SUPPORTED_DATASETS = [
     "cifar10",
@@ -32,6 +35,10 @@ _SUPPORTED_DATASETS = [
     "imagenet",
     "imagenet100",
     "custom",
+    "imagenet100_42",
+    "imagenet1pct_42",
+    "imagenet10pct_42",
+    "imagenet_42"
 ]
 
 

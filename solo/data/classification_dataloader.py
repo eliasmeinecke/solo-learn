@@ -29,6 +29,8 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from torchvision.datasets import STL10, ImageFolder
 
+from solo.data.custom.imagenet import ImgNetDataset_42
+
 try:
     from solo.data.h5_dataset import H5Dataset
 except ImportError:
@@ -154,6 +156,10 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         "stl10": stl_pipeline,
         "imagenet100": imagenet_pipeline,
         "imagenet": imagenet_pipeline,
+        "imagenet_42": imagenet_pipeline,
+        "imagenet100_42": imagenet_pipeline,
+        "imagenet1pct_42": imagenet_pipeline,
+        "imagenet10pct_42": imagenet_pipeline,
         "custom": custom_pipeline,
     }
 
@@ -167,14 +173,14 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
 
 
 def prepare_datasets(
-    dataset: str,
-    T_train: Callable,
-    T_val: Callable,
-    train_data_path: Optional[Union[str, Path]] = None,
-    val_data_path: Optional[Union[str, Path]] = None,
-    data_format: Optional[str] = "image_folder",
-    download: bool = True,
-    data_fraction: float = -1.0,
+        dataset: str,
+        T_train: Callable,
+        T_val: Callable,
+        train_data_path: Optional[Union[str, Path]] = None,
+        val_data_path: Optional[Union[str, Path]] = None,
+        data_format: Optional[str] = "image_folder",
+        download: bool = True,
+        data_fraction: float = -1.0,
 ) -> Tuple[Dataset, Dataset]:
     """Prepares train and val datasets.
 
@@ -203,7 +209,8 @@ def prepare_datasets(
         sandbox_folder = Path(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
         val_data_path = sandbox_folder / "datasets"
 
-    assert dataset in ["cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom"]
+    assert dataset in ["cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet100_42",
+                       "imagenet1pct_42", "imagenet10pct_42", "imagenet_42"]
 
     if dataset in ["cifar10", "cifar100"]:
         DatasetClass = vars(torchvision.datasets)[dataset.upper()]
@@ -244,6 +251,19 @@ def prepare_datasets(
             train_dataset = ImageFolder(train_data_path, T_train)
             val_dataset = ImageFolder(val_data_path, T_val)
 
+    elif dataset in ["imagenet_42", "imagenet100_42", "imagenet1pct_42", "imagenet10pct_42"]:
+        if dataset == "imagenet100_42":
+            subset = "imgnet100"
+        elif dataset == "imagenet1pct_42":
+            subset = "1pct"
+        elif dataset == "imagenet10pct_42":
+            subset = "10pct"
+        else:
+            subset = None
+
+        train_dataset = ImgNetDataset_42(Path(train_data_path) / 'ImageNet/h5', T_train, split="train", subset=subset)
+        val_dataset = ImgNetDataset_42(Path(val_data_path) / 'ImageNet/h5', T_val, split="val", subset=subset)
+
     if data_fraction > 0:
         assert data_fraction < 1, "Only use data_fraction for values smaller than 1."
         data = train_dataset.samples
@@ -261,7 +281,7 @@ def prepare_datasets(
 
 
 def prepare_dataloaders(
-    train_dataset: Dataset, val_dataset: Dataset, batch_size: int = 64, num_workers: int = 4
+        train_dataset: Dataset, val_dataset: Dataset, batch_size: int = 64, num_workers: int = 4
 ) -> Tuple[DataLoader, DataLoader]:
     """Wraps a train and a validation dataset with a DataLoader.
 
@@ -293,15 +313,15 @@ def prepare_dataloaders(
 
 
 def prepare_data(
-    dataset: str,
-    train_data_path: Optional[Union[str, Path]] = None,
-    val_data_path: Optional[Union[str, Path]] = None,
-    data_format: Optional[str] = "image_folder",
-    batch_size: int = 64,
-    num_workers: int = 4,
-    download: bool = True,
-    data_fraction: float = -1.0,
-    auto_augment: bool = False,
+        dataset: str,
+        train_data_path: Optional[Union[str, Path]] = None,
+        val_data_path: Optional[Union[str, Path]] = None,
+        data_format: Optional[str] = "image_folder",
+        batch_size: int = 64,
+        num_workers: int = 4,
+        download: bool = True,
+        data_fraction: float = -1.0,
+        auto_augment: bool = False,
 ) -> Tuple[DataLoader, DataLoader]:
     """Prepares transformations, creates dataset objects and wraps them in dataloaders.
 

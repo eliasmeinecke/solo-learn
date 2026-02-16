@@ -1,4 +1,5 @@
 defaults:
+  - paths: default
   - _self_
   - augmentations: asymmetric.yaml
   - wandb: private.yaml
@@ -27,10 +28,10 @@ momentum:
   final_tau: 0.996
 data:
   dataset: ego4d
-  train_path: "/home/data/elias/Ego4dDivSubset"
+  train_path: ${paths.data_train_path}
   val_path: None
   format: "h5"
-  num_workers: 4
+  num_workers: 8
   dataset_kwargs:
     time_window: 15
     fov_type: "crop"
@@ -43,19 +44,19 @@ optimizer:
   no_labels: True
 scheduler:
   name: "warmup_cosine"
-  warmup_epochs: 10  # should be roughly 10% of total epochs
+  warmup_epochs: 3  # should be roughly 10% of total epochs
 checkpoint:
   enabled: True
-  dir: "/home/data/elias/trained_models"
-  frequency: 10
+  dir: ${paths.checkpoint_dir}
+  frequency: 3
   keep_prev: True
 auto_resume:
   enabled: True
 knn_clb:
   enabled: True
-  dataset: imagenet100
-  train_path:  "/home/data/elias/imagenet100/train"
-  val_path:  "/home/data/elias/imagenet100/val"
+  dataset: imagenet100_42
+  train_path:  ${paths.knn_clb_train_path}
+  val_path:  ${paths.knn_clb_val_path}
   num_workers: 4
   batch_size: 16
   k: [ 10, 20, 50, 100 ]
@@ -64,7 +65,7 @@ knn_clb:
 
 
 # overwrite PL stuff
-max_epochs: 100
+max_epochs: 30
 devices: 4
 sync_batchnorm: True
 accelerator: "gpu"
@@ -73,5 +74,5 @@ precision: 16-mixed
 no_validation: True # important since we have no validation split
 limit_val_batches: 0
 num_sanity_val_steps: 0
-log_every_n_steps: 200 # increase for larger runs
+log_every_n_steps: 100 # increase for larger runs
 limit_train_batches: 1.0 # percentile or total batches (1.0 for full run)
