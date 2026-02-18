@@ -1,0 +1,6 @@
+data_train_path: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/Ego4d/Ego4dDivSubset"
+
+checkpoint_dir: "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/schaumloeffel/logs/models_elias/"
+
+knn_clb_train_path:  "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/"
+knn_clb_val_path:  "/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/"
