@@ -175,10 +175,10 @@ def main(cfg: DictConfig):
         ckpt_path = cfg.resume_from_checkpoint
         del cfg.resume_from_checkpoint
 
+    foveation_cfg = cfg.data.dataset_kwargs.get("foveation", None)
     callbacks = []
-
     if cfg.knn_clb.enabled:
-        callbacks.append(KNNCallback(cfg.knn_clb))
+        callbacks.append(KNNCallback(cfg.knn_clb, foveation_cfg=foveation_cfg))
 
     if cfg.checkpoint.enabled:
         ckpt = Checkpointer(

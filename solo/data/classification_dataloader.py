@@ -30,6 +30,7 @@ from torchvision import transforms
 from torchvision.datasets import STL10, ImageFolder
 
 from solo.data.custom.imagenet import ImgNetDataset_42
+from foveation.factory import FoveationTransform, build_foveation
 
 try:
     from solo.data.h5_dataset import H5Dataset
@@ -181,6 +182,7 @@ def prepare_datasets(
         data_format: Optional[str] = "image_folder",
         download: bool = True,
         data_fraction: float = -1.0,
+        foveation_cfg: dict | None = None
 ) -> Tuple[Dataset, Dataset]:
     """Prepares train and val datasets.
 
@@ -201,6 +203,27 @@ def prepare_datasets(
         Tuple[Dataset, Dataset]: training dataset and validation dataset.
     """
 
+    if foveation_cfg is not None:
+        fov_type = foveation_cfg.get("type", None)
+
+        if fov_type in ["blur", "fcg"]:
+            
+            params = foveation_cfg.get(fov_type, {})
+
+            print(
+                f"[Foveation] Classification mode: type={fov_type} | "
+                + ", ".join(f"{k}={v}" for k, v in params.items())
+            )
+
+            foveation = build_foveation(foveation_cfg)
+
+            T_train = FoveationTransform(foveation, T_train)
+            T_val = FoveationTransform(foveation, T_val)
+
+        else:
+            print("[Foveation] Disabled for classification")
+        
+    
     if train_data_path is None:
         sandbox_folder = Path(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
         train_data_path = sandbox_folder / "datasets"
@@ -322,6 +345,7 @@ def prepare_data(
         download: bool = True,
         data_fraction: float = -1.0,
         auto_augment: bool = False,
+        foveation_cfg: dict | None = None,
 ) -> Tuple[DataLoader, DataLoader]:
     """Prepares transformations, creates dataset objects and wraps them in dataloaders.
 
@@ -368,6 +392,7 @@ def prepare_data(
         data_format=data_format,
         download=download,
         data_fraction=data_fraction,
+        foveation_cfg=foveation_cfg,
     )
     train_loader, val_loader = prepare_dataloaders(
         train_dataset,

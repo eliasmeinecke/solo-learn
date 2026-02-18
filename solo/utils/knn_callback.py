@@ -12,9 +12,10 @@ from solo.utils.knn import WeightedKNNClassifier
 
 
 class KNNCallback(pl.Callback):
-    def __init__(self, cfg: DictConfig, ):
+    def __init__(self, cfg: DictConfig, foveation_cfg=None):
         self.cfg = cfg
         self.train_loader, self.test_loader = None, None
+        self.foveation_cfg = foveation_cfg
 
     def on_fit_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         T_train, T_val = prepare_transforms(self.cfg.dataset)
@@ -26,6 +27,7 @@ class KNNCallback(pl.Callback):
             train_data_path=self.cfg.train_path,
             val_data_path=self.cfg.val_path,
             data_format=self.cfg.format,
+            foveation=self.foveation_cfg,
         )
         self.train_loader = DataLoader(
             train_dataset,

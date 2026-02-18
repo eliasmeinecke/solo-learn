@@ -9,9 +9,7 @@ import pandas as pd
 from PIL import Image
 from torch.utils.data import Dataset
 
-from foveation.methods.gaze_crop import GazeCenteredCrop
-from foveation.methods.radial_blur import RadialBlurFoveation
-from foveation.methods.fcg import FovealCartesianGeometry
+from foveation.factory import build_foveation
 
 
 class Ego4d(Dataset):
@@ -20,13 +18,13 @@ class Ego4d(Dataset):
             root: Union[Path, str],
             time_window: int = 0,
             transform: Callable[[np.ndarray], np.ndarray] = None,
-            foveation: dict | None = None,
+            foveation_cfg: dict | None = None,
     ):
         self.root = Path(root)
         self.time_window = time_window
         self.transform = transform
 
-        self.foveation = build_foveation(foveation)
+        self.foveation = build_foveation(foveation_cfg)
 
         self.hdf5_file = h5py.File(self.root / "ego4d_diverse_subset.h5", "r")
         self.annot = pd.read_parquet(self.root / "annot.parquet")
@@ -74,30 +72,3 @@ class Ego4d(Dataset):
             img_pair = self.foveation(img_pair, new_dp, saliency)
 
         return self.transform(img, img_pair), -1
-
-
-def build_foveation(fov_cfg: dict | None):
-    if fov_cfg is None:
-        print("[Foveation] None")
-        return None
-
-    fov_type = fov_cfg.get("type", None)
-    if fov_type not in ["crop", "blur", "fcg"]: # adjust later if adding another type
-        print("[Foveation] Disabled")
-        return None
-
-    params = fov_cfg.get(fov_type, {})
-
-    print(
-        f"[Foveation] type={fov_type} | "
-        + ", ".join(f"{k}={v}" for k, v in params.items())
-    )
-
-    if fov_type == "crop":
-        return GazeCenteredCrop(**params)
-    if fov_type == "blur":
-        return RadialBlurFoveation(**params)
-    if fov_type == "fcg":
-        return FovealCartesianGeometry(**params)
-
-    raise ValueError(f"Unknown foveation type: {fov_type}")
