@@ -11,7 +11,7 @@ hydra:
   run:
     dir: .
 
-name: "fov-parameter-test"
+name: "blur-sweep-1"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -34,17 +34,19 @@ data:
   dataset_kwargs:
     time_window: 15
     foveation:
-      type: "fcg"
+      type: "blur"
       crop:
         crop_size: 336
       blur:
-      # change blur logic to include scalars for sigmas & rings!
+        radii_frac: [0.1, 0.2, 0.4, 0.8]
+        sigma_base_frac: 0.00075
+        sigma_growth: 1.5
         saliency_alpha: 1.0
-        transition_width: 32
+        transition_frac: 0.1
       fcg:
         p0: 64
         alpha: 0.5
-        beta: 0.0
+      # include more when including saliency!
 optimizer:
   name: "lars"
   batch_size: 256
@@ -75,7 +77,7 @@ knn_clb:
 
 
 # overwrite PL stuff
-max_epochs: 20
+max_epochs: 1
 devices: 2
 sync_batchnorm: True
 accelerator: "gpu"

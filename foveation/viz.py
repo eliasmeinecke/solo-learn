@@ -7,17 +7,21 @@ import cv2
 import matplotlib.pyplot as plt
 from PIL import Image
 from pathlib import Path
+from types import SimpleNamespace
 
 from foveation.methods.gaze_crop import GazeCenteredCrop
 from foveation.methods.radial_blur import RadialBlurFoveation
 from foveation.methods.fcg import FovealCartesianGeometry
+from foveation.methods.fcg_saliency import FovealCartesianGeometryWithSaliency
 from foveation.methods.fcg_paper import FovealCartesianGeometryPaper
+
 
 
 def main():
     ANNOT_PATH = "/home/data/elias/Ego4dDivSubset/annot.parquet"
     H5_PATH = "/home/data/elias/Ego4dDivSubset/ego4d_diverse_subset.h5"
 
+    #i = 99_002 (for 2 saliency "blobs")
     i = 100_003
 
     df = pd.read_parquet(ANNOT_PATH)
@@ -33,9 +37,12 @@ def main():
     annot = df.iloc[i]
     saliency = saliency.astype(np.float32)
     
+    # also test: fcg_paper, fcg_saliency, cortal_magnification?
+     
     # methods: crop, blur, fcg
-    viz_fov(annot, frame, saliency, "fcg")
+    viz_fov(annot, frame, saliency, "blur")
     
+    # viz_relative_sigmas(annot, frame, saliency)
     # viz_blur_heatmaps(annot, frame, saliency)
     # viz_saliency(annot, frame, saliency)
     # viz_fcg_rings_paper()
@@ -90,17 +97,72 @@ def viz_fov(annot, frame, saliency, method):
     plt.close()
 
     print(f"Saved {file_name}")  
+    
+    
+def viz_relative_sigmas(annot, frame, saliency):
+    
+    method = "blur"
+    
+    img_np = np.array(frame)
+    H, W, _ = img_np.shape
+    x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
+
+    s_big = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
+    s_big = (s_big - s_big.min()) / (s_big.max() - s_big.min() + 1e-6)
+    big_out = RadialBlurFoveation()(frame, annot, s_big)
+    
+    scale_x = 224 / W
+    scale_y = 224 / H
+
+    small_annot = SimpleNamespace(
+        gaze_loc_x = x_g * scale_x,
+        gaze_loc_y = y_g * scale_y
+    )
+    small_img_np = np.array(frame.resize((224, 224), resample=Image.BILINEAR))
+    s_small = cv2.resize(saliency, (224, 224), interpolation=cv2.INTER_LINEAR)
+    s_small = (s_small - s_small.min()) / (s_small.max() - s_small.min() + 1e-6)
+    small_out = RadialBlurFoveation()(small_img_np, small_annot, s_small)
+    # small_out = small_out.resize((H, W), resample=Image.BILINEAR)
+    
+    
+
+    plt.figure(figsize=(8, 4))
+    plt.subplot(1, 2, 1)
+    plt.title("540x540")
+    plt.imshow(big_out)
+    plt.scatter(x_g, y_g, c="red", s=20)
+    plt.axis("off")
+
+    plt.subplot(1, 2, 2)
+    plt.title("224x224")
+    plt.imshow(small_out)
+    # plt.scatter(x_g, y_g, c="red", s=20)
+    plt.scatter(small_annot.gaze_loc_x, small_annot.gaze_loc_y, c="red", s=20)
+    plt.axis("off")
+
+    plt.tight_layout()
+
+    file_name = f"ego4d_{method}_example.png"
+    base_dir = Path(__file__).resolve().parent
+    out_path = base_dir / "plots" / method / file_name
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=200)
+    plt.close()
+
+    print(f"Saved {file_name}")  
 
 
 def viz_blur_heatmaps(annot, frame, saliency):
-    radii = [32, 64, 128, 256]
-    sigmas = [0.0, 0.5, 1.5, 3.0, 6.0]
-    saliency_alpha = 1.0
-    transition_width = 32
+    radii_frac = [0.1, 0.2, 0.4, 0.8]
+    sigma_base = 0.5 
+    sigma_growth = 2
+    saliency_alpha = 1.0 
+    transition_frac = 0.1
 
     img_np = np.array(frame)
     H, W, _ = img_np.shape
-
+        
     x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
 
     # --- saliency ---
@@ -115,7 +177,12 @@ def viz_blur_heatmaps(annot, frame, saliency):
 
     # --- distances ---
     R = np.sqrt((X - x_g)**2 + (Y - y_g)**2)
+    R_max = np.max(R)
     R_eff = R / (1.0 + saliency_alpha * S)
+    
+    radii = [f * R_max for f in radii_frac]
+    transition_width = transition_frac * R_max
+    sigmas = [sigma_base * (sigma_growth ** i) for i in range(len(radii_frac)+1)]
 
     # --- ring centers ---
     ring_centers = []
