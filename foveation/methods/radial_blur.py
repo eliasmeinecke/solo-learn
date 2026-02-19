@@ -7,7 +7,7 @@ from foveation.methods.base import Foveation
 
 
 class RadialBlurFoveation(Foveation):
-    def __init__(self, radii_frac=[0.1, 0.2, 0.4, 0.8], sigma_base_frac=0.0015, sigma_growth=2, saliency_alpha=1.0, transition_frac=0.1):
+    def __init__(self, radii_frac=[0.2, 0.4, 0.8], sigma_base_frac=0.0015, sigma_growth=2, saliency_alpha=1.0, transition_frac=0.1):
         # sigma_base_frac was chosen to result in a base_sigma of ~0.8 for an image size of 540x540
         
         self.radii_frac = radii_frac
@@ -15,6 +15,7 @@ class RadialBlurFoveation(Foveation):
         self.sigma_growth = sigma_growth
         self.saliency_alpha = saliency_alpha
         self.transition_frac = transition_frac
+        self.cached_grids = {}
 
     def __call__(self, img: Image.Image, annot: pd.Series, saliency: np.ndarray) -> Image.Image:
         
@@ -24,13 +25,17 @@ class RadialBlurFoveation(Foveation):
         x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
         
         S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
-        # normalize saliency just to be safe
-        S = S.astype(np.float32)
-        S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+        # if something is off, make sure saliency is normalized by running the following
+        # S = S.astype(np.float32)
+        # S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+        
+        if (H, W) not in self.cached_grids:
+            ys = np.arange(H)
+            xs = np.arange(W)
+            X, Y = np.meshgrid(xs, ys)
+            self.cached_grids[(H, W)] = (X.astype(np.float32), Y.astype(np.float32))
 
-        ys = np.arange(H)
-        xs = np.arange(W)
-        X, Y = np.meshgrid(xs, ys)
+        X, Y = self.cached_grids[(H, W)]
 
         R = np.sqrt((X - x_g)**2 + (Y - y_g)**2)
         R_max = np.max(R)

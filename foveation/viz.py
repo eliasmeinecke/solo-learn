@@ -1,5 +1,6 @@
 
 import io
+import time
 import numpy as np
 import pandas as pd
 import h5py
@@ -38,10 +39,12 @@ def main():
     annot = df.iloc[i]
     saliency = saliency.astype(np.float32)
     
-    # also test: fcg_paper, fcg_saliency, cortal_magnification?
+    # also test?: fcg_paper, fcg_saliency, cortal_magnification
      
     # methods: crop, blur, fcg
     # viz_fov(frame, annot, saliency, "blur")
+    # performance test:
+    # benchmark_blur(frame, annot, saliency, "blur")
     
     # viz_blur_heatmaps(frame, annot, saliency)
     # viz_relative_sigmas(frame, annot, saliency)
@@ -51,6 +54,34 @@ def main():
     
     # viz_saliency(frame, annot, saliency)
     # viz_eval_saliency(frame, FoveationTransform(foveation=None, base_transform=lambda x: x))
+
+
+def benchmark_blur(frame, annot, saliency, method, runs=100):
+    
+    if method == "crop":
+        foveation = GazeCenteredCrop()
+    elif method == "blur":
+        foveation = RadialBlurFoveation()(frame, annot, saliency)
+    elif method == "fcg":  # wip
+        foveation = FovealCartesianGeometry()
+    else:
+        print("No benchmarkable foveation given.")
+        return None
+
+    for _ in range(10):
+        _ = foveation(frame, annot, saliency)
+    
+    start = time.perf_counter()
+    
+    for _ in range(runs):
+        _ = foveation(frame, annot, saliency)
+    
+    end = time.perf_counter()
+    
+    avg_time = (end - start) / runs
+    
+    print(f"Average blur time per image: {avg_time:.4f} seconds")
+    print(f"Images per second: {1/avg_time:.2f}")
     
 
 def viz_fov(frame, annot, saliency, method):
@@ -156,7 +187,7 @@ def viz_relative_sigmas(frame, annot, saliency):
 
 
 def viz_blur_heatmaps(frame, annot, saliency):
-    radii_frac = [0.1, 0.2, 0.4, 0.8]
+    radii_frac = [0.2, 0.4, 0.8]
     sigma_base = 0.5 
     sigma_growth = 2
     saliency_alpha = 1.0 
