@@ -9,6 +9,7 @@ from PIL import Image
 from pathlib import Path
 from types import SimpleNamespace
 
+from foveation.factory import FoveationTransform
 from foveation.methods.gaze_crop import GazeCenteredCrop
 from foveation.methods.radial_blur import RadialBlurFoveation
 from foveation.methods.fcg import FovealCartesianGeometry
@@ -40,16 +41,19 @@ def main():
     # also test: fcg_paper, fcg_saliency, cortal_magnification?
      
     # methods: crop, blur, fcg
-    viz_fov(annot, frame, saliency, "blur")
+    # viz_fov(frame, annot, saliency, "blur")
     
-    # viz_relative_sigmas(annot, frame, saliency)
-    # viz_blur_heatmaps(annot, frame, saliency)
-    # viz_saliency(annot, frame, saliency)
+    # viz_blur_heatmaps(frame, annot, saliency)
+    # viz_relative_sigmas(frame, annot, saliency)
+    
+    # viz_fcg_grids(frame, annot, saliency)
     # viz_fcg_rings_paper()
-    # viz_fcg_grids(annot, frame, saliency)
+    
+    # viz_saliency(frame, annot, saliency)
+    # viz_eval_saliency(frame, FoveationTransform(foveation=None, base_transform=lambda x: x))
+    
 
-
-def viz_fov(annot, frame, saliency, method):
+def viz_fov(frame, annot, saliency, method):
     
     img_np = np.array(frame)
     H, W, _ = img_np.shape
@@ -99,7 +103,7 @@ def viz_fov(annot, frame, saliency, method):
     print(f"Saved {file_name}")  
     
     
-def viz_relative_sigmas(annot, frame, saliency):
+def viz_relative_sigmas(frame, annot, saliency):
     
     method = "blur"
     
@@ -124,8 +128,6 @@ def viz_relative_sigmas(annot, frame, saliency):
     small_out = RadialBlurFoveation()(small_img_np, small_annot, s_small)
     # small_out = small_out.resize((H, W), resample=Image.BILINEAR)
     
-    
-
     plt.figure(figsize=(8, 4))
     plt.subplot(1, 2, 1)
     plt.title("540x540")
@@ -153,7 +155,7 @@ def viz_relative_sigmas(annot, frame, saliency):
     print(f"Saved {file_name}")  
 
 
-def viz_blur_heatmaps(annot, frame, saliency):
+def viz_blur_heatmaps(frame, annot, saliency):
     radii_frac = [0.1, 0.2, 0.4, 0.8]
     sigma_base = 0.5 
     sigma_growth = 2
@@ -249,7 +251,7 @@ def viz_blur_heatmaps(annot, frame, saliency):
     print(f"Saved {file_name}")   
     
     
-def viz_fcg_grids(annot, frame, saliency):
+def viz_fcg_grids(frame, annot, saliency):
 
     # --- prepare fcg with and without saliency ---
     fcg_no_sal = FovealCartesianGeometry(p0=32, alpha=0.5, beta=0.0)
@@ -320,7 +322,7 @@ def make_grid_image(size, step=16):
     return Image.fromarray(img)
     
 
-def viz_saliency(annot, frame, saliency):
+def viz_saliency(frame, annot, saliency):
     flat_max = saliency.argmax()
     max_x, max_y = flat_max % 64, flat_max // 64
     fig, ax = plt.subplots(1, 2)
@@ -339,6 +341,43 @@ def viz_saliency(annot, frame, saliency):
     plt.savefig(out_path, dpi=200)
     plt.close()
     print("Saved ego4d_example.png")  
+    
+    
+def viz_eval_saliency(frame, foveation_transform):
+
+    annot = foveation_transform._build_center_annotation(frame)
+    saliency = foveation_transform._build_center_saliency(frame)
+
+    H, W = saliency.shape
+    
+    flat_max = saliency.argmax()
+    max_x, max_y = flat_max % 64, flat_max // 64
+
+    fig, ax = plt.subplots(1, 2, figsize=(8, 4))
+
+    # original
+    ax[0].imshow(np.array(frame))
+    ax[0].scatter(annot.gaze_loc_x, annot.gaze_loc_y, c="red", s=50)
+    ax[0].set_title("Image + Gaze")
+    ax[0].axis("off")
+
+    # saliency
+    ax[1].imshow(saliency, cmap="viridis")
+    ax[1].scatter(max_x, max_y, c="red", s=50)
+    ax[1].set_title("Saliency + Max")
+    ax[1].axis("off")
+
+    plt.tight_layout()
+
+    save_name="saliency_eval_debug.png"
+    base_dir = Path(__file__).resolve().parent
+    out_path = base_dir / "plots" / "debug" / save_name
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=200)
+    plt.close()
+
+    print(f"Saved {save_name}")
     
     
 def viz_fcg_rings_paper():

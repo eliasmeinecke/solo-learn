@@ -27,7 +27,7 @@ class KNNCallback(pl.Callback):
             train_data_path=self.cfg.train_path,
             val_data_path=self.cfg.val_path,
             data_format=self.cfg.format,
-            foveation=self.foveation_cfg,
+            foveation_cfg=self.foveation_cfg,
         )
         self.train_loader = DataLoader(
             train_dataset,

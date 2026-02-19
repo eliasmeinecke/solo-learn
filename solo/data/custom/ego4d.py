@@ -18,13 +18,13 @@ class Ego4d(Dataset):
             root: Union[Path, str],
             time_window: int = 0,
             transform: Callable[[np.ndarray], np.ndarray] = None,
-            foveation_cfg: dict | None = None,
+            foveation: dict | None = None,
     ):
         self.root = Path(root)
         self.time_window = time_window
         self.transform = transform
 
-        self.foveation = build_foveation(foveation_cfg)
+        self.foveation = build_foveation(foveation)
 
         self.hdf5_file = h5py.File(self.root / "ego4d_diverse_subset.h5", "r")
         self.annot = pd.read_parquet(self.root / "annot.parquet")

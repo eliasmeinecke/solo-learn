@@ -1,18 +1,50 @@
 
+import numpy as np
+import cv2
+
 from foveation.methods.gaze_crop import GazeCenteredCrop
 from foveation.methods.radial_blur import RadialBlurFoveation
 from foveation.methods.fcg import FovealCartesianGeometry
 
 
+class CenterGaze:
+    def __init__(self, x, y):
+        self.gaze_loc_x = x
+        self.gaze_loc_y = y
+        
+
 class FoveationTransform:
-    def __init__(self, foveation, base_transform):
+    def __init__(self, foveation, base_transform, saliency_mode="center"):
         self.foveation = foveation
         self.base_transform = base_transform
+        self.saliency_mode = saliency_mode
+
+    def _build_center_annotation(self, img):
+        W, H = img.size
+        return CenterGaze(W // 2, H // 2)
+
+    def _build_center_saliency(self):
+        sal_res = 64
+        xs = np.arange(sal_res)
+        ys = np.arange(sal_res)
+        X, Y = np.meshgrid(xs, ys)
+
+        cx = sal_res // 2
+        cy = sal_res // 2
+        sigma = 0.15 * sal_res
+
+        S = np.exp(-((X - cx)**2 + (Y - cy)**2) / (2 * sigma**2))
+        S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+
+        return S.astype(np.float32)
 
     def __call__(self, img):
-        # later maybe add gaze-prediction here?
+
         if self.foveation is not None:
-            img = self.foveation(img, None)  # center fixation
+            annot = self._build_center_annotation(img)
+            saliency = self._build_center_saliency()
+            img = self.foveation(img, annot, saliency)
+            
         return self.base_transform(img)
     
     
