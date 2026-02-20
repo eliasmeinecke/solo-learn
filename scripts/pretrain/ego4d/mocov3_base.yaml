@@ -34,7 +34,20 @@ data:
   num_workers: 8
   dataset_kwargs:
     time_window: 15
-    fov_type: "none"
+    foveation:
+      type: "none"
+      crop:
+        crop_size: 336
+      blur:
+        radii_frac: [0.2, 0.4, 0.8]
+        sigma_base_frac: 0.00075
+        sigma_growth: 1.5
+        saliency_alpha: 1.0
+        transition_frac: 0.1
+      fcg:
+        p0: 64
+        alpha: 0.5
+      # include more when including saliency!
 optimizer:
   name: "lars"
   batch_size: 128

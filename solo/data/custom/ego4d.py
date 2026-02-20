@@ -9,7 +9,7 @@ import pandas as pd
 from PIL import Image
 from torch.utils.data import Dataset
 
-from foveation.foveation_factory import build_foveation
+from foveation.factory import build_foveation
 
 
 class Ego4d(Dataset):
@@ -18,15 +18,13 @@ class Ego4d(Dataset):
             root: Union[Path, str],
             time_window: int = 0,
             transform: Callable[[np.ndarray], np.ndarray] = None,
-            fov_type = None,
+            foveation: dict | None = None,
     ):
         self.root = Path(root)
         self.time_window = time_window
         self.transform = transform
 
-        self.foveation = build_foveation(fov_type)
-
-        print("Running with foveation type:", fov_type)
+        self.foveation = build_foveation(foveation)
 
         self.hdf5_file = h5py.File(self.root / "ego4d_diverse_subset.h5", "r")
         self.annot = pd.read_parquet(self.root / "annot.parquet")
@@ -74,5 +72,3 @@ class Ego4d(Dataset):
             img_pair = self.foveation(img_pair, new_dp, saliency)
 
         return self.transform(img, img_pair), -1
-
-

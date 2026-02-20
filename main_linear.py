@@ -20,6 +20,8 @@
 import inspect
 import logging
 import os
+import json
+from pathlib import Path
 
 import hydra
 import torch
@@ -70,6 +72,36 @@ def main(cfg: DictConfig):
 
     ckpt_path = cfg.pretrained_feature_extractor
     assert ckpt_path.endswith(".ckpt") or ckpt_path.endswith(".pth") or ckpt_path.endswith(".pt")
+    
+    ckpt_path_obj = Path(ckpt_path)
+    args_path = ckpt_path_obj.parent / "args.json"
+    
+    foveation_cfg = None
+    
+    if args_path.exists():
+        print(f"[LinearEval] Loading args from {args_path}")
+        with open(args_path, "r") as f:
+            pretrain_args = json.load(f)
+
+        foveation_cfg = (
+            pretrain_args
+            .get("data", {})
+            .get("dataset_kwargs", {})
+            .get("foveation", None)
+        )
+
+        if foveation_cfg is not None:
+            fov_type = foveation_cfg.get("type", None)
+            params = foveation_cfg.get(fov_type, {})
+            print(
+                f"[LinearEval] Found foveation config: type={fov_type} | "
+                + ", ".join(f"{k}={v}" for k, v in params.items())
+            )
+        else:
+            print("[LinearEval] No foveation found in args.json")
+
+    else:
+        print("[LinearEval] No args.json found next to checkpoint")
 
     state = torch.load(ckpt_path, map_location="cpu")["state_dict"]
     for k in list(state.keys()):
@@ -125,6 +157,7 @@ def main(cfg: DictConfig):
         batch_size=cfg.optimizer.batch_size,
         num_workers=cfg.data.num_workers,
         auto_augment=cfg.auto_augment,
+        foveation_cfg=foveation_cfg,
     )
 
     if cfg.data.format == "dali":
