@@ -48,10 +48,11 @@ scheduler:
 checkpoint:
   enabled: True
   dir: ${paths.checkpoint_dir}
-  frequency: 3
+  frequency: 5
   keep_prev: True
+  save_last: True
 auto_resume:
-  enabled: True
+  enabled: False
 knn_clb:
   enabled: True
   dataset: imagenet100_42
@@ -65,7 +66,7 @@ knn_clb:
 
 
 # overwrite PL stuff
-max_epochs: 50
+max_epochs: 30
 devices: 4
 sync_batchnorm: True
 accelerator: "gpu"
