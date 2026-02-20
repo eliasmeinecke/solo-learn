@@ -23,8 +23,8 @@ def main():
     ANNOT_PATH = "/home/data/elias/Ego4dDivSubset/annot.parquet"
     H5_PATH = "/home/data/elias/Ego4dDivSubset/ego4d_diverse_subset.h5"
 
-    #i = 99_002 (for 2 saliency "blobs")
-    i = 100_003
+    i = 99_002 # (for 2 saliency "blobs")
+    # i = 100_003
 
     df = pd.read_parquet(ANNOT_PATH)
 
@@ -44,7 +44,7 @@ def main():
     # methods: crop, blur, fcg
     # viz_fov(frame, annot, saliency, "blur")
     # performance test:
-    # benchmark_blur(frame, annot, saliency, "blur")
+    # benchmark_fov(frame, annot, saliency, "blur")
     
     # viz_blur_heatmaps(frame, annot, saliency)
     # viz_relative_sigmas(frame, annot, saliency)
@@ -56,12 +56,12 @@ def main():
     # viz_eval_saliency(frame, FoveationTransform(foveation=None, base_transform=lambda x: x))
 
 
-def benchmark_blur(frame, annot, saliency, method, runs=100):
+def benchmark_fov(frame, annot, saliency, method, runs=100):
     
     if method == "crop":
         foveation = GazeCenteredCrop()
     elif method == "blur":
-        foveation = RadialBlurFoveation()(frame, annot, saliency)
+        foveation = RadialBlurFoveation()
     elif method == "fcg":  # wip
         foveation = FovealCartesianGeometry()
     else:
@@ -80,7 +80,8 @@ def benchmark_blur(frame, annot, saliency, method, runs=100):
     
     avg_time = (end - start) / runs
     
-    print(f"Average blur time per image: {avg_time:.4f} seconds")
+    print(f"Using fov method: {method}")
+    print(f"Average fov time per image: {avg_time:.4f} seconds")
     print(f"Images per second: {1/avg_time:.2f}")
     
 
@@ -187,10 +188,10 @@ def viz_relative_sigmas(frame, annot, saliency):
 
 
 def viz_blur_heatmaps(frame, annot, saliency):
-    radii_frac = [0.2, 0.4, 0.8]
-    sigma_base = 0.5 
+    radii_frac = [0.3, 0.7]
+    sigma_base_frac = 0.006
     sigma_growth = 2
-    saliency_alpha = 1.0 
+    saliency_alpha = 5 
     transition_frac = 0.1
 
     img_np = np.array(frame)
@@ -215,7 +216,10 @@ def viz_blur_heatmaps(frame, annot, saliency):
     
     radii = [f * R_max for f in radii_frac]
     transition_width = transition_frac * R_max
-    sigmas = [sigma_base * (sigma_growth ** i) for i in range(len(radii_frac)+1)]
+    sigma_base = sigma_base_frac * 540
+    sigmas = [0]
+    for i in range(len(radii_frac)):
+        sigmas.append(sigma_base * (sigma_growth ** i)) 
 
     # --- ring centers ---
     ring_centers = []

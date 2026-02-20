@@ -7,8 +7,7 @@ from foveation.methods.base import Foveation
 
 
 class RadialBlurFoveation(Foveation):
-    def __init__(self, radii_frac=[0.2, 0.4, 0.8], sigma_base_frac=0.0015, sigma_growth=2, saliency_alpha=1.0, transition_frac=0.1):
-        # sigma_base_frac was chosen to result in a base_sigma of ~0.8 for an image size of 540x540
+    def __init__(self, radii_frac=[0.3, 0.7], sigma_base_frac=0.006, sigma_growth=2, saliency_alpha=5.0, transition_frac=0.1):
         
         self.radii_frac = radii_frac
         self.sigma_base_frac = sigma_base_frac
@@ -43,11 +42,11 @@ class RadialBlurFoveation(Foveation):
         
         radii = [f * R_max for f in self.radii_frac]
         transition_width = self.transition_frac * R_max
+        
         sigma_base = self.sigma_base_frac * min(H, W)
-        sigmas = [
-            sigma_base * (self.sigma_growth ** i)
-            for i in range(len(self.radii_frac) + 1)
-        ]
+        sigmas = [0]
+        for i in range(len(self.radii_frac)):
+            sigmas.append(sigma_base * (self.sigma_growth ** i))    
 
         blurred_imgs = []
         for sigma in sigmas:
@@ -55,7 +54,7 @@ class RadialBlurFoveation(Foveation):
                 blurred_imgs.append(img_np)
             else:
                 blurred_imgs.append(cv2.GaussianBlur(img_np, (0, 0), sigma))  # let opencv calculate kernel size
-
+        
         ring_centers = []
         prev = 0.0
         for r in radii:
