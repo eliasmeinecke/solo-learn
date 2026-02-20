@@ -2,5 +2,5 @@ enabled: True
 entity: "eliasmeinecke-uni-frankfurt"
 project: "bachelorthesis"
 
-group: "testing"  # testing, final, lr-sweep, blur-sweep
+group: "final"  # testing, final, lr-sweep, blur-sweep
 job_type: "pretrain"  # pretrain, linear_eval, background_study?
