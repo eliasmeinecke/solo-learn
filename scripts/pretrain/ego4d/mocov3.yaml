@@ -2,7 +2,7 @@ defaults:
   - paths: default
   - _self_
   - augmentations: asymmetric.yaml
-  - wandb: private.yaml
+  - wandb: testing.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
@@ -12,7 +12,7 @@ hydra:
   run:
     dir: .
 
-name: "blur-efficiency-test2"
+name: "cm-nosal-test"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -35,7 +35,7 @@ data:
   dataset_kwargs:
     time_window: 15
     foveation:
-      type: "blur"
+      type: "fcg"
       crop:
         crop_size: 336
       blur:

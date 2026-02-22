@@ -14,10 +14,9 @@ class CenterGaze:
         
 
 class FoveationTransform:
-    def __init__(self, foveation, base_transform, saliency_mode="center"):
+    def __init__(self, foveation, base_transform):
         self.foveation = foveation
         self.base_transform = base_transform
-        self.saliency_mode = saliency_mode
 
     def _build_center_annotation(self, img):
         W, H = img.size
@@ -41,6 +40,7 @@ class FoveationTransform:
     def __call__(self, img):
 
         if self.foveation is not None:
+            # later add gaze/saliency-predictors?
             annot = self._build_center_annotation(img)
             saliency = self._build_center_saliency()
             img = self.foveation(img, annot, saliency)

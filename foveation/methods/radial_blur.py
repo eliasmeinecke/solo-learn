@@ -23,10 +23,7 @@ class RadialBlurFoveation(Foveation):
         
         x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
         
-        S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
-        # if something is off, make sure saliency is normalized by running the following
-        # S = S.astype(np.float32)
-        # S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+        S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR).astype(np.float32)
         
         if (H, W) not in self.cached_grids:
             ys = np.arange(H)

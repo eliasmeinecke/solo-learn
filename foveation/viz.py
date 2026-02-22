@@ -9,22 +9,20 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from pathlib import Path
 from types import SimpleNamespace
+import torch
 
 from foveation.factory import FoveationTransform
 from foveation.methods.gaze_crop import GazeCenteredCrop
 from foveation.methods.radial_blur import RadialBlurFoveation
-from foveation.methods.fcg import FovealCartesianGeometry
-from foveation.methods.fcg_saliency import FovealCartesianGeometryWithSaliency
-from foveation.methods.fcg_paper import FovealCartesianGeometryPaper
-
+from foveation.methods.cm import CortalMagnification
 
 
 def main():
     ANNOT_PATH = "/home/data/elias/Ego4dDivSubset/annot.parquet"
     H5_PATH = "/home/data/elias/Ego4dDivSubset/ego4d_diverse_subset.h5"
 
-    i = 99_002 # (for 2 saliency "blobs")
-    # i = 100_003
+    # i = 99_002 # (for 2 saliency "blobs")
+    i = 100_003
 
     df = pd.read_parquet(ANNOT_PATH)
 
@@ -38,52 +36,17 @@ def main():
     
     annot = df.iloc[i]
     saliency = saliency.astype(np.float32)
-    
-    # also test?: fcg_paper, fcg_saliency, cortal_magnification
      
-    # methods: crop, blur, fcg
-    # viz_fov(frame, annot, saliency, "blur")
-    # performance test:
-    # benchmark_fov(frame, annot, saliency, "blur")
+    # methods: crop, blur, cm
+    # viz_fov(frame, annot, saliency, "cm")
+    # benchmark_fov(frame, annot, saliency, "cm")
     
-    # viz_blur_heatmaps(frame, annot, saliency)
     # viz_relative_sigmas(frame, annot, saliency)
+    # viz_blur_heatmaps(frame, annot, saliency)
     
-    # viz_fcg_grids(frame, annot, saliency)
-    # viz_fcg_rings_paper()
-    
-    # viz_saliency(frame, annot, saliency)
+    viz_saliency(frame, annot, saliency)
     # viz_eval_saliency(frame, FoveationTransform(foveation=None, base_transform=lambda x: x))
 
-
-def benchmark_fov(frame, annot, saliency, method, runs=100):
-    
-    if method == "crop":
-        foveation = GazeCenteredCrop()
-    elif method == "blur":
-        foveation = RadialBlurFoveation()
-    elif method == "fcg":  # wip
-        foveation = FovealCartesianGeometry()
-    else:
-        print("No benchmarkable foveation given.")
-        return None
-
-    for _ in range(10):
-        _ = foveation(frame, annot, saliency)
-    
-    start = time.perf_counter()
-    
-    for _ in range(runs):
-        _ = foveation(frame, annot, saliency)
-    
-    end = time.perf_counter()
-    
-    avg_time = (end - start) / runs
-    
-    print(f"Using fov method: {method}")
-    print(f"Average fov time per image: {avg_time:.4f} seconds")
-    print(f"Images per second: {1/avg_time:.2f}")
-    
 
 def viz_fov(frame, annot, saliency, method):
     
@@ -93,21 +56,17 @@ def viz_fov(frame, annot, saliency, method):
     x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
     S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
     S = (S - S.min()) / (S.max() - S.min() + 1e-6)
-
-    print(f"{method} input size: {frame.size}")
     
     if method == "crop":
         out = GazeCenteredCrop()(frame, annot, S)
-        out.resize((540, 540), resample=Image.BILINEAR)
-    elif method == "blur":  # wip
+    elif method == "blur":
         out = RadialBlurFoveation()(frame, annot, S)
-    elif method == "fcg":  # wip
-        out = FovealCartesianGeometry()(frame, annot, S)
-        out.resize((540, 540), resample=Image.BILINEAR)
+    elif method == "cm":  # wip
+        out = CortalMagnification()(frame, annot, S)
     else:
         out = frame
     
-    print(f"{method} output size: {out.size}")
+    out.resize((540, 540), resample=Image.BILINEAR)
 
     plt.figure(figsize=(8, 4))
     plt.subplot(1, 2, 1)
@@ -133,6 +92,35 @@ def viz_fov(frame, annot, saliency, method):
     plt.close()
 
     print(f"Saved {file_name}")  
+    
+    
+def benchmark_fov(frame, annot, saliency, method, runs=100):
+    
+    if method == "crop":
+        foveation = GazeCenteredCrop()
+    elif method == "blur":
+        foveation = RadialBlurFoveation()
+    elif method == "cm":  # wip
+        foveation = CortalMagnification()
+    else:
+        print("No benchmarkable foveation given.")
+        return None
+
+    for _ in range(10):
+        _ = foveation(frame, annot, saliency)
+    
+    start = time.perf_counter()
+    
+    for _ in range(runs):
+        _ = foveation(frame, annot, saliency)
+    
+    end = time.perf_counter()
+    
+    avg_time = (end - start) / runs
+    
+    print(f"Using fov method: {method}")
+    print(f"Average fov time per image: {avg_time:.4f} seconds")
+    print(f"Images per second: {1/avg_time:.2f}")
     
     
 def viz_relative_sigmas(frame, annot, saliency):
@@ -200,9 +188,7 @@ def viz_blur_heatmaps(frame, annot, saliency):
     x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
 
     # --- saliency ---
-    S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
-    S = S.astype(np.float32)
-    S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+    S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR).astype(np.float32)
 
     # --- coordinate grid ---
     ys = np.arange(H)
@@ -284,78 +270,7 @@ def viz_blur_heatmaps(frame, annot, saliency):
     plt.close()
 
     print(f"Saved {file_name}")   
-    
-    
-def viz_fcg_grids(frame, annot, saliency):
 
-    # --- prepare fcg with and without saliency ---
-    fcg_no_sal = FovealCartesianGeometry(p0=32, alpha=0.5, beta=0.0)
-    fcg_sal    = FovealCartesianGeometry(p0=32, alpha=0.5, beta=1.0)
-    
-    # --- prepare saliency ---
-    img_np = np.array(frame)
-    H, W, _ = img_np.shape
-
-    S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
-    S = (S - S.min()) / (S.max() - S.min() + 1e-6)
-
-    
-    # --- apply FCG to real image ---
-    img_no_sal = fcg_no_sal(frame, annot, S)
-    img_sal    = fcg_sal(frame, annot, S)
-
-    # --- grid visualization ---
-    grid = make_grid_image(min(H, W), step=24)
-    grid_no_sal = fcg_no_sal(grid, annot, S)
-    grid_sal    = fcg_sal(grid, annot, S)
-
-    # --- plotting ---
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-
-    # row 1: real image
-    axes[0, 0].imshow(frame)
-    axes[0, 0].scatter(annot.gaze_loc_x, annot.gaze_loc_y, c="red", s=30)
-    axes[0, 0].set_title("Input + Gaze")
-
-    axes[0, 1].imshow(img_no_sal)
-    axes[0, 1].set_title("FCG (no saliency)")
-
-    axes[0, 2].imshow(img_sal)
-    axes[0, 2].set_title("FCG (with saliency)")
-
-    # row 2: geometry
-    axes[1, 0].imshow(S, cmap="magma")
-    axes[1, 0].set_title("Saliency Map")
-    
-    axes[1, 1].imshow(grid_no_sal)
-    axes[1, 1].set_title("Geometry (no saliency)")
-
-    axes[1, 2].imshow(grid_sal)
-    axes[1, 2].set_title("Geometry (with saliency)")
-
-    for ax in axes.flat:
-        ax.axis("off")
-
-    # --- save ---
-    file_name = "ego4d_fcg_grids_example.png"
-    out_path = Path(__file__).resolve().parent / "plots" / "fcg_grids" / file_name
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(out_path, dpi=200)
-    plt.close()
-
-    print(f"Saved {file_name}") 
-    
-    
-def make_grid_image(size, step=16):
-    img = np.ones((size, size, 3), dtype=np.uint8) * 255
-
-    for y in range(0, size, step):
-        img[y:y+1, :, :] = 0
-    for x in range(0, size, step):
-        img[:, x:x+1, :] = 0
-    
-    return Image.fromarray(img)
-    
 
 def viz_saliency(frame, annot, saliency):
     flat_max = saliency.argmax()
@@ -370,7 +285,7 @@ def viz_saliency(frame, annot, saliency):
     plt.tight_layout()
     
     base_dir = Path(__file__).resolve().parent
-    out_path = base_dir / "plots" / "ego4d" / "ego4d_example.png"
+    out_path = base_dir / "plots" / "ego4d_saliency" / "ego4d_example.png"
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=200)
@@ -381,9 +296,7 @@ def viz_saliency(frame, annot, saliency):
 def viz_eval_saliency(frame, foveation_transform):
 
     annot = foveation_transform._build_center_annotation(frame)
-    saliency = foveation_transform._build_center_saliency(frame)
-
-    H, W = saliency.shape
+    saliency = foveation_transform._build_center_saliency()
     
     flat_max = saliency.argmax()
     max_x, max_y = flat_max % 64, flat_max // 64
@@ -406,7 +319,7 @@ def viz_eval_saliency(frame, foveation_transform):
 
     save_name="saliency_eval_debug.png"
     base_dir = Path(__file__).resolve().parent
-    out_path = base_dir / "plots" / "debug" / save_name
+    out_path = base_dir / "plots" / "eval_saliency" / save_name
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=200)
@@ -414,34 +327,6 @@ def viz_eval_saliency(frame, foveation_transform):
 
     print(f"Saved {save_name}")
     
-    
-def viz_fcg_rings_paper():
-    # visualizes "mapping onto rings of original image"
-    fcg = FovealCartesianGeometryPaper(p0=15, pmax=100, nR=30)
-    canvas = np.zeros((fcg.fovea_size, fcg.fovea_size), dtype=np.int32)
-
-    R = 200  # toy image radius
-
-    for y in range(-R, R):
-        for x in range(-R, R):
-            xp, yp = fcg.mapping(x, y)
-            if 0 <= xp < fcg.fovea_size and 0 <= yp < fcg.fovea_size:
-                canvas[yp, xp] += 1
-
-    plt.figure(figsize=(6, 6))
-    plt.imshow(canvas, cmap="gray")
-    plt.title("FCG mapping → foveal rings")
-    plt.axis("off")
-    
-    file_name = f"ego4d_fcg_map_example.png"
-    base_dir = Path(__file__).resolve().parent
-    out_path = base_dir / "plots" / "fcg_map" / file_name
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(out_path, dpi=200)
-    plt.close()
-
-    print(f"Saved {file_name}")   
-
 
 if __name__ == "__main__":
     main()
