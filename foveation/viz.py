@@ -44,7 +44,9 @@ def main():
     # viz_relative_sigmas(frame, annot, saliency)
     # viz_blur_heatmaps(frame, annot, saliency)
     
-    viz_saliency(frame, annot, saliency)
+    viz_cm_overview(frame, annot, saliency)
+    
+    # viz_saliency(frame, annot, saliency)
     # viz_eval_saliency(frame, FoveationTransform(foveation=None, base_transform=lambda x: x))
 
 
@@ -270,6 +272,64 @@ def viz_blur_heatmaps(frame, annot, saliency):
     plt.close()
 
     print(f"Saved {file_name}")   
+
+
+def viz_cm_overview(frame, annot, saliency):
+
+    img_np = np.array(frame)
+    H, W, _ = img_np.shape
+
+    x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
+
+    # --- normalize saliency ---
+    S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
+    S = S.astype(np.float32)
+    S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+
+    # --- CM instances ---
+    cm_no_sal = CortalMagnification(saliency_alpha=0.0)
+    cm_sal = CortalMagnification(saliency_alpha=0.5)
+
+    out_no_sal = cm_no_sal(frame, annot, S)
+    out_sal = cm_sal(frame, annot, S)
+
+    # --- plotting ---
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+    # Original
+    axes[0, 0].imshow(frame)
+    axes[0, 0].scatter(x_g, y_g, c="red", s=30)
+    axes[0, 0].set_title("Original Image + Gaze")
+
+    # CM without saliency
+    axes[0, 1].imshow(out_no_sal)
+    axes[0, 1].scatter(x_g, y_g, c="red", s=30)
+    axes[0, 1].set_title("Cortical Magnification")
+
+    # Saliency
+    axes[1, 0].imshow(S, cmap="magma")
+    axes[1, 0].set_title("Saliency Map")
+
+    # CM with saliency
+    axes[1, 1].imshow(out_sal)
+    axes[1, 1].scatter(x_g, y_g, c="red", s=30)
+    axes[1, 1].set_title("CM + Saliency")
+
+    for ax in axes.flat:
+        ax.axis("off")
+
+    plt.tight_layout()
+
+    # --- save ---
+    file_name = "ego4d_cm_overview.png"
+    base_dir = Path(__file__).resolve().parent
+    out_path = base_dir / "plots" / "cm_overview" / file_name
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    plt.savefig(out_path, dpi=200)
+    plt.close()
+
+    print(f"Saved {file_name}")
 
 
 def viz_saliency(frame, annot, saliency):
