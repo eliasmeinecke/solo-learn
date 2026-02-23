@@ -61,8 +61,9 @@ scheduler:
 checkpoint:
   enabled: True
   dir: ${paths.checkpoint_dir}
-  frequency: 3
+  frequency: 5
   keep_prev: True
+  save_last: True
 auto_resume:
   enabled: True
 knn_clb:

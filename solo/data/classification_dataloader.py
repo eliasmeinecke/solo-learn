@@ -18,6 +18,7 @@
 # DEALINGS IN THE SOFTWARE.
 
 import os
+import shutil
 from pathlib import Path
 from typing import Callable, Optional, Tuple, Union
 
@@ -31,6 +32,8 @@ from torchvision.datasets import STL10, ImageFolder
 
 from solo.data.custom.imagenet import ImgNetDataset_42
 from foveation.factory import FoveationTransform, build_foveation
+from solo.data.custom.base import H5ClassificationDataset
+from solo.data.custom.core50 import Core50, Core50ForBGClassification
 
 try:
     from solo.data.h5_dataset import H5Dataset
@@ -77,24 +80,24 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         Tuple[nn.Module, nn.Module]: training and validation transformation pipelines.
     """
 
-    # cifar_pipeline = {
-    #     "T_train": transforms.Compose(
-    #         [
-    #             transforms.RandomResizedCrop(size=32, scale=(0.08, 1.0)),
-    #             transforms.RandomHorizontalFlip(),
-    #             transforms.ToTensor(),
-    #             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)),
-    #         ]
-    #     ),
-    #     "T_val": transforms.Compose(
-    #         [
-    #             transforms.ToTensor(),
-    #             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)),
-    #         ]
-    #     ),
-    # }
-
     cifar_pipeline = {
+        "T_train": transforms.Compose(
+            [
+                transforms.RandomResizedCrop(size=32, scale=(0.08, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)),
+            ]
+        ),
+        "T_val": transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)),
+            ]
+        ),
+    }
+
+    cifar_pipeline_224 = {
         "T_train": transforms.Compose(
             [
                 transforms.Resize(224),
@@ -130,6 +133,24 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         ),
     }
 
+    stl_pipeline_224 = {
+        "T_train": transforms.Compose(
+            [
+                transforms.RandomResizedCrop(size=224, scale=(0.08, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
+            ]
+        ),
+        "T_val": transforms.Compose(
+            [
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
+            ]
+        ),
+    }
+
     imagenet_pipeline = {
         "T_train": transforms.Compose(
             [
@@ -149,12 +170,71 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         ),
     }
 
+    core50_pipeline = {
+        "T_train": transforms.Compose(
+            [
+                transforms.RandomResizedCrop(size=224, scale=(0.08, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+            ]
+        ),
+        "T_val": transforms.Compose(
+            [
+                transforms.Resize(256),  # resize shorter
+                transforms.CenterCrop(224),  # take center crop
+                transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+            ]
+        )
+    }
+
+    toybox_pipeline = {
+        "T_train": transforms.Compose(
+            [
+                transforms.RandomResizedCrop(size=224, scale=(0.6, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+            ]
+        ),
+        "T_val": transforms.Compose(
+            [
+                transforms.Resize(256),  # resize shorter
+                transforms.CenterCrop(224),  # take center crop
+                transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+            ]
+        )
+    }
+
+    coil100_pipeline = {
+        "T_train": transforms.Compose(
+            [
+                transforms.RandomResizedCrop(size=224, scale=(0.08, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
+            ]
+        ),
+        "T_val": transforms.Compose(
+            [
+                transforms.Resize(224),  # resize shorter
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
+            ]
+        ),
+    }
+
     custom_pipeline = build_custom_pipeline()
 
     pipelines = {
         "cifar10": cifar_pipeline,
         "cifar100": cifar_pipeline,
-        "stl10": stl_pipeline,
+        "cifar10_224": cifar_pipeline_224,
+        "cifar100_224": cifar_pipeline_224,
+        "STL10": stl_pipeline,
+        "STL10_224": stl_pipeline_224,
         "imagenet100": imagenet_pipeline,
         "imagenet": imagenet_pipeline,
         "imagenet_42": imagenet_pipeline,
@@ -162,6 +242,19 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
         "imagenet1pct_42": imagenet_pipeline,
         "imagenet10pct_42": imagenet_pipeline,
         "custom": custom_pipeline,
+        'core50': core50_pipeline,
+        'DTD': imagenet_pipeline,
+        'Flowers102': imagenet_pipeline,
+        'FGVCAircraft': imagenet_pipeline,
+        'Food101': imagenet_pipeline,
+        'OxfordIIITPet': imagenet_pipeline,
+        'Places365': imagenet_pipeline,
+        'COIL100': coil100_pipeline,
+        'StanfordCars': imagenet_pipeline,
+        "Places365_h5": imagenet_pipeline,
+        "SUN397": imagenet_pipeline,
+        "SUN397_h5": imagenet_pipeline,
+        "toybox": toybox_pipeline,
     }
 
     assert dataset in pipelines, f"{dataset} is not supported."
@@ -182,7 +275,7 @@ def prepare_datasets(
         data_format: Optional[str] = "image_folder",
         download: bool = True,
         data_fraction: float = -1.0,
-        foveation_cfg: dict | None = None
+        foveation_cfg: Optional[dict] = None
 ) -> Tuple[Dataset, Dataset]:
     """Prepares train and val datasets.
 
@@ -207,7 +300,7 @@ def prepare_datasets(
         fov_type = foveation_cfg.get("type", None)
 
         if fov_type in ["blur", "fcg"]:
-            
+
             params = foveation_cfg.get(fov_type, {})
 
             print(
@@ -222,8 +315,8 @@ def prepare_datasets(
 
         else:
             print("[Foveation] Disabled for classification")
-        
-    
+
+
     if train_data_path is None:
         sandbox_folder = Path(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
         train_data_path = sandbox_folder / "datasets"
@@ -233,9 +326,16 @@ def prepare_datasets(
         val_data_path = sandbox_folder / "datasets"
 
     assert dataset in ["cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom", "imagenet100_42",
-                       "imagenet1pct_42", "imagenet10pct_42", "imagenet_42"]
+                       "imagenet1pct_42", "imagenet10pct_42", "imagenet_42", 'core50', "DTD", 'Flowers102',
+                       'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10", "STL10_224",
+                       "Places365_h5", "SUN397", "Caltech101", "toybox", "COIL100", 'FGVCAircraft', 'Food101',
+                       'OxfordIIITPet', 'Places365', 'StanfordCars', "Places365_h5", "SUN397_h5", 'cifar100_224',
+                       'cifar10_224',
+]
 
-    if dataset in ["cifar10", "cifar100"]:
+    if dataset in ["cifar10", "cifar100", "cifar10_224", "cifar100_224"]:
+        if dataset == "cifar10_224": dataset = "cifar10"
+        if dataset == "cifar100_224": dataset = "cifar100"
         DatasetClass = vars(torchvision.datasets)[dataset.upper()]
         train_dataset = DatasetClass(
             train_data_path,
@@ -251,19 +351,55 @@ def prepare_datasets(
             transform=T_val,
         )
 
-    elif dataset == "stl10":
-        train_dataset = STL10(
+    elif dataset in ['DTD', 'Flowers102', 'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars',
+                     'STL10', 'SUN397', 'Caltech101', 'STL10_224']:
+        if dataset == "STL10_224": dataset = "STL10"
+        DatasetClass = vars(torchvision.datasets)[dataset]
+
+        if dataset == "StanfordCars" and download:
+            download = False
+            if not (Path(train_data_path) / 'stanford_cars').exists():
+                import kagglehub
+                kagglehub.login()
+                path = kagglehub.dataset_download("rickyyyyyyy/torchvision-stanford-cars", force_download=False)
+                ds_path = Path(path) / 'stanford_cars'
+                shutil.move(ds_path, train_data_path)
+
+        # some datasets have different names for their train split
+
+        if dataset == "Places365":
+            train_split = "train-standard"
+        elif dataset == "OxfordIIITPet":
+            train_split = "trainval"
+        else:
+            train_split = "train"
+
+        train_dataset = DatasetClass(
             train_data_path,
-            split="train",
-            download=True,
+            split=train_split,
+            download=download,
             transform=T_train,
         )
-        val_dataset = STL10(
+
+        val_dataset = DatasetClass(
             val_data_path,
             split="test",
             download=download,
             transform=T_val,
         )
+
+    elif dataset in ["Places365_h5"]:
+        train_dataset = H5ClassificationDataset(root=Path(train_data_path) / 'Places365', transform=T_train,
+                                                split="train")
+        val_dataset = H5ClassificationDataset(root=Path(val_data_path) / 'Places365', transform=T_val, split="val")
+    elif dataset in ["SUN397_h5"]:
+        train_dataset = H5ClassificationDataset(root=Path(train_data_path) / 'SUN397', transform=T_train,
+                                                split="train")
+        val_dataset = H5ClassificationDataset(root=Path(val_data_path) / 'SUN397', transform=T_val, split="test")
+    elif dataset in ["COIL100"]:
+        train_dataset = H5ClassificationDataset(root=Path(train_data_path) / 'coil100', transform=T_train,
+                                                split="train")
+        val_dataset = H5ClassificationDataset(root=Path(val_data_path) / 'coil100', transform=T_val, split="val")
 
     elif dataset in ["imagenet", "imagenet100", "custom"]:
         if data_format == "h5":
@@ -286,6 +422,20 @@ def prepare_datasets(
 
         train_dataset = ImgNetDataset_42(Path(train_data_path) / 'ImageNet/h5', T_train, split="train", subset=subset)
         val_dataset = ImgNetDataset_42(Path(val_data_path) / 'ImageNet/h5', T_val, split="val", subset=subset)
+
+    elif dataset == 'core50':
+        train_dataset = Core50(h5_path=Path(train_data_path) / 'core50_350x350/core50_arr.h5', transform=T_train,
+                               backgrounds=['s1', 's2', 's3', 's4', 's5', 's6'])
+        val_dataset = Core50(h5_path=Path(val_data_path) / 'core50_350x350/core50_arr.h5', transform=T_val,
+                             backgrounds=['s7', 's8', 's9', 's10', 's11'])
+    elif dataset == 'core50_bg':
+        train_dataset = Core50ForBGClassification(h5_path=Path(train_data_path) / 'core50_350x350/core50_arr.h5',
+                                                  split="train", transform=T_train)
+        val_dataset = Core50ForBGClassification(h5_path=Path(val_data_path) / 'core50_350x350/core50_arr.h5',
+                                                split="test", transform=T_val)
+    elif dataset == "toybox":
+        train_dataset = H5ClassificationDataset(Path(train_data_path) / 'ToyBox/h5', split="train", transform=T_train)
+        val_dataset = H5ClassificationDataset(Path(val_data_path) / 'ToyBox/h5', split="test", transform=T_val)
 
     if data_fraction > 0:
         assert data_fraction < 1, "Only use data_fraction for values smaller than 1."
@@ -345,7 +495,7 @@ def prepare_data(
         download: bool = True,
         data_fraction: float = -1.0,
         auto_augment: bool = False,
-        foveation_cfg: dict | None = None,
+        foveation_cfg: Optional[dict] = None,
 ) -> Tuple[DataLoader, DataLoader]:
     """Prepares transformations, creates dataset objects and wraps them in dataloaders.
 

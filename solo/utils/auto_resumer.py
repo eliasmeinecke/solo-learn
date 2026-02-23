@@ -26,12 +26,14 @@ class AutoResumer:
         "wandb.project",
         "wandb.entity",
         "pretrained_feature_extractor",
+        "data.dataset_kwargs.time_window"
+        "data.dataset_kwargs.foveation.type"
     ]
 
     def __init__(
-        self,
-        checkpoint_dir: Union[str, Path] = Path("trained_models"),
-        max_hours: int = 36,
+            self,
+            checkpoint_dir: Union[str, Path] = Path("trained_models"),
+            max_hours: int = -1,
     ):
         """Autoresumer object that automatically tries to find a checkpoint
         that is as old as max_time.
@@ -43,7 +45,10 @@ class AutoResumer:
         """
 
         self.checkpoint_dir = checkpoint_dir
-        self.max_hours = timedelta(hours=max_hours)
+        if max_hours == -1 or max_hours is None:
+            self.max_hours = timedelta.max
+        else:
+            self.max_hours = timedelta(hours=max_hours)
 
     @staticmethod
     def add_and_assert_specific_cfg(cfg: DictConfig) -> DictConfig:
@@ -58,7 +63,7 @@ class AutoResumer:
 
         cfg.auto_resume = omegaconf_select(cfg, "auto_resume", default={})
         cfg.auto_resume.enabled = omegaconf_select(cfg, "auto_resume.enabled", default=False)
-        cfg.auto_resume.max_hours = omegaconf_select(cfg, "auto_resume.max_hours", default=36)
+        cfg.auto_resume.max_hours = omegaconf_select(cfg, "auto_resume.max_hours", default=-1)
 
         return cfg
 
@@ -97,10 +102,11 @@ class AutoResumer:
             for candidate in candidates:
                 candidate_cfg = DictConfig(json.load(open(candidate.args)))
                 if all(
-                    omegaconf_select(candidate_cfg, param, None)
-                    == omegaconf_select(cfg, param, None)
-                    for param in AutoResumer.SHOULD_MATCH
+                        omegaconf_select(candidate_cfg, param, None)
+                        == omegaconf_select(cfg, param, None)
+                        for param in AutoResumer.SHOULD_MATCH
                 ):
+                    print("Found a matching checkpoint:", candidate.checkpoint)
                     wandb_run_id = getattr(candidate_cfg, "wandb_run_id", None)
                     return candidate.checkpoint, wandb_run_id
 

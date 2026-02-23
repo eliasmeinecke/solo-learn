@@ -1,7 +1,7 @@
 import io
 import random
 from pathlib import Path
-from typing import Union, Callable
+from typing import Union, Callable, Optional
 
 import h5py
 import numpy as np
@@ -18,7 +18,7 @@ class Ego4d(Dataset):
             root: Union[Path, str],
             time_window: int = 0,
             transform: Callable[[np.ndarray], np.ndarray] = None,
-            foveation: dict | None = None,
+            foveation: Optional[dict] = None,
     ):
         self.root = Path(root)
         self.time_window = time_window

@@ -1,3 +1,4 @@
+from typing import Optional
 
 import numpy as np
 import cv2
@@ -48,7 +49,7 @@ class FoveationTransform:
         return self.base_transform(img)
     
     
-def build_foveation(fov_cfg: dict | None):
+def build_foveation(fov_cfg: Optional[dict]):
     if fov_cfg is None:
         print("[Foveation] None")
         return None
