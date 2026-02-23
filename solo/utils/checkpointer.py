@@ -188,5 +188,5 @@ class Checkpointer(Callback):
         """
         if self.save_last:
             if not trainer.sanity_checking:
-                ckpt = self.path / self.ckpt_placeholder.format(epoch='last')
+                ckpt = self.path / self.ckpt_placeholder.format('last')
                 trainer.save_checkpoint(ckpt)

@@ -1,13 +1,13 @@
 [
   {
     "model_name": "mocov3-ego4d-base",
-    "id": "",
+    "id": "15lbxdst",
     "foveation_strategy": "none",
     "time_window": 15
   },
   {
     "model_name": "mocov3-ego4d-crop",
-    "id": "",
+    "id": "saoza7nn",
     "foveation_strategy": "crop",
     "time_window": 15
   }

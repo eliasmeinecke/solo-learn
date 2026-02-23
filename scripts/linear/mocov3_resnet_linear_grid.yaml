@@ -1,5 +1,6 @@
 defaults:
   - _self_
+  - wandb: private.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
@@ -49,13 +50,6 @@ early_stopping:
   patience: 5
   monitor: "val_acc1"
   mode: "max"
-wandb:
-  enabled: True
-  entity: "aaubret"
-  project: "EgocentricVision"
-  group: "mocov3-rn50"
-  job_type: "linear_probe_grid"
-  offline: False
 
 
 finetune: False

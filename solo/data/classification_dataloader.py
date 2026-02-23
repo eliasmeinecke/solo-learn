@@ -275,7 +275,7 @@ def prepare_datasets(
         data_format: Optional[str] = "image_folder",
         download: bool = True,
         data_fraction: float = -1.0,
-        foveation_cfg: dict | None = None
+        foveation_cfg: Optional[dict] = None
 ) -> Tuple[Dataset, Dataset]:
     """Prepares train and val datasets.
 
@@ -329,7 +329,9 @@ def prepare_datasets(
                        "imagenet1pct_42", "imagenet10pct_42", "imagenet_42", 'core50', "DTD", 'Flowers102',
                        'FGVCAircraft', 'Food101', 'OxfordIIITPet', 'Places365', 'StanfordCars', "STL10", "STL10_224",
                        "Places365_h5", "SUN397", "Caltech101", "toybox", "COIL100", 'FGVCAircraft', 'Food101',
-                       'OxfordIIITPet', 'Places365', 'StanfordCars', "Places365_h5", "SUN397_h5"]
+                       'OxfordIIITPet', 'Places365', 'StanfordCars', "Places365_h5", "SUN397_h5", 'cifar100_224',
+                       'cifar10_224',
+]
 
     if dataset in ["cifar10", "cifar100", "cifar10_224", "cifar100_224"]:
         if dataset == "cifar10_224": dataset = "cifar10"
@@ -493,7 +495,7 @@ def prepare_data(
         download: bool = True,
         data_fraction: float = -1.0,
         auto_augment: bool = False,
-        foveation_cfg: dict | None = None,
+        foveation_cfg: Optional[dict] = None,
 ) -> Tuple[DataLoader, DataLoader]:
     """Prepares transformations, creates dataset objects and wraps them in dataloaders.
 

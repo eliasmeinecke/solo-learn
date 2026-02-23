@@ -159,6 +159,7 @@ def main(cfg: DictConfig):
         auto_augment=cfg.auto_augment,
         foveation_cfg=foveation_cfg,
     )
+    print("LOADED DATA", cfg.data.dataset)
 
     if cfg.data.format == "dali":
         assert (

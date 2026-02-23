@@ -65,7 +65,7 @@ checkpoint:
   keep_prev: True
   save_last: True
 auto_resume:
-  enabled: False
+  enabled: True
 knn_clb:
   enabled: True
   dataset: imagenet100_42
