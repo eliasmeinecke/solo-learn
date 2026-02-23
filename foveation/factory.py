@@ -5,7 +5,7 @@ import cv2
 
 from foveation.methods.gaze_crop import GazeCenteredCrop
 from foveation.methods.radial_blur import RadialBlurFoveation
-from foveation.methods.fcg import FovealCartesianGeometry
+from foveation.methods.cm import CortalMagnification
 
 
 class CenterGaze:
@@ -55,7 +55,7 @@ def build_foveation(fov_cfg: Optional[dict]):
         return None
 
     fov_type = fov_cfg.get("type", None)
-    if fov_type not in ["crop", "blur", "fcg"]: # adjust later if adding another type
+    if fov_type not in ["crop", "blur", "cm"]:
         print("[Foveation] Disabled")
         return None
 
@@ -70,7 +70,7 @@ def build_foveation(fov_cfg: Optional[dict]):
         return GazeCenteredCrop(**params)
     if fov_type == "blur":
         return RadialBlurFoveation(**params)
-    if fov_type == "fcg":
-        return FovealCartesianGeometry(**params)
+    if fov_type == "cm":
+        return CortalMagnification(**params)
 
     raise ValueError(f"Unknown foveation type: {fov_type}")

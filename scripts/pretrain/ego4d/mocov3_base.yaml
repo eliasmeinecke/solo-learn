@@ -44,10 +44,10 @@ data:
         sigma_growth: 1.5
         saliency_alpha: 1.0
         transition_frac: 0.1
-      fcg:
-        p0: 64
-        alpha: 0.5
-      # include more when including saliency!
+      cm:
+        fov_ratio: 0.3125
+        K_ratio: 0.208
+        saliency_beta: 1.0
 optimizer:
   name: "lars"
   batch_size: 128

@@ -14,10 +14,10 @@ Implementation of: "On the use of Cortical Magnification and Saccades as Biologi
 Authors: Binxu Wang, David Mayo3, Arturo Deza, Andrei Barbu, Colin Conwell
 """
 class CortalMagnification(Foveation):
-    def __init__(self, fov=168.75, K=20, saliency_alpha=0.5):
-        self.fov = fov
-        self.K = K
-        self.saliency_alpha = saliency_alpha
+    def __init__(self, fov_ratio=0.3125, K_ratio=0.208, saliency_beta=0.5):
+        self.fov_ratio = fov_ratio
+        self.K_ratio = K_ratio
+        self.saliency_beta = saliency_beta
 
     def __call__(self, img: Image.Image, annot: pd.Series, saliency: np.ndarray) -> Image.Image:
 
@@ -34,6 +34,7 @@ class CortalMagnification(Foveation):
         
         S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR).astype(np.float32)
         S = torch.from_numpy(S).to(device)
+        S = S / (S.sum() + 1e-6) # convert saliency to "probability distribution"
 
         ys = torch.linspace(0, H - 1, H, device=device)
         xs = torch.linspace(0, W - 1, W, device=device)
@@ -44,10 +45,21 @@ class CortalMagnification(Foveation):
 
         r = torch.sqrt(dx**2 + dy**2 + 1e-6)
         
-        r_eff = r / (1.0 + self.saliency_alpha * S)
+        mean_r = torch.sum(S * r)
+        mean_r2 = torch.sum(S * r**2)
+        var_r = mean_r2 - mean_r**2
+        std_r = torch.sqrt(torch.clamp(var_r, min=0.0))
 
+        spread_norm = std_r / r.max()
+        
+        base_size = min(H, W)
+        fov = self.fov_ratio * base_size
+        K = self.K_ratio * base_size
+
+        fov_eff = fov * (1.0 + self.saliency_beta * spread_norm)
+        
         # radial transform
-        r_new = radial_quadratic(r_eff, self.fov, self.K)
+        r_new = radial_quadratic(r, fov_eff, K)
         
         dx_norm = dx / r
         dy_norm = dy / r

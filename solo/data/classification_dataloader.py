@@ -299,7 +299,7 @@ def prepare_datasets(
     if foveation_cfg is not None:
         fov_type = foveation_cfg.get("type", None)
 
-        if fov_type in ["blur", "fcg"]:
+        if fov_type in ["blur", "cm"]:
 
             params = foveation_cfg.get(fov_type, {})
 

@@ -287,8 +287,8 @@ def viz_cm_overview(frame, annot, saliency):
     S = (S - S.min()) / (S.max() - S.min() + 1e-6)
 
     # --- CM instances ---
-    cm_no_sal = CortalMagnification(saliency_alpha=0.0)
-    cm_sal = CortalMagnification(saliency_alpha=0.5)
+    cm_no_sal = CortalMagnification(saliency_beta=0.0)
+    cm_sal = CortalMagnification(saliency_beta=1)
 
     out_no_sal = cm_no_sal(frame, annot, S)
     out_sal = cm_sal(frame, annot, S)
