@@ -35,6 +35,7 @@ from solo.data.pretrain_dataloader import (
     build_transform_pipeline,
     prepare_dataloader,
     prepare_datasets,
+    build_pre_transform
 )
 from solo.methods import METHODS
 from solo.utils.auto_resumer import AutoResumer
@@ -138,6 +139,14 @@ def main(cfg: DictConfig):
                 )
             )
         transform = FullTransformPipeline(pipelines)
+
+        if cfg.data.gpu_augmentation:
+            model.transform = transform # assign the transform to the model so that it can be used for gpu augmentation
+            transform = build_pre_transform(base_resize=cfg.data.gpu_pre_image_size)
+
+            if cfg.debug_augmentations:
+                print("GPU Batch-Transform:")
+                print(model.transform)
 
         if cfg.debug_augmentations:
             print("Transforms:")

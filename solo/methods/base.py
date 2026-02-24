@@ -60,9 +60,9 @@ from solo.utils.momentum import MomentumUpdater, initialize_momentum_params
 
 
 def static_lr(
-    get_lr: Callable,
-    param_group_indexes: Sequence[int],
-    lrs_to_replace: Sequence[float],
+        get_lr: Callable,
+        param_group_indexes: Sequence[int],
+        lrs_to_replace: Sequence[float],
 ):
     lrs = get_lr()
     for idx, lr in zip(param_group_indexes, lrs_to_replace):
@@ -263,6 +263,9 @@ class BaseMethod(pl.LightningModule):
         # keep track of validation metrics
         self.validation_step_outputs = []
 
+        # Define transform on batches
+        self.transform = None
+
     @staticmethod
     def add_and_assert_specific_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
         """Adds method specific default values/checks for config.
@@ -332,7 +335,6 @@ class BaseMethod(pl.LightningModule):
                 "weight_decay": 0,
             })
         return params
-
 
     def configure_optimizers(self) -> Tuple[List, List]:
         """Collects learnable parameters and configures the optimizer and learning rate scheduler.
@@ -420,6 +422,31 @@ class BaseMethod(pl.LightningModule):
             optimizer.zero_grad(set_to_none=True)
         except:
             optimizer.zero_grad()
+
+    def on_after_batch_transfer(self, batch, dataloader_idx):
+        """
+        Called after batch is moved to device and applies transforms on GPU.
+        """
+
+        if self.training and self.transform is not None:
+            idx, X, targets = batch
+
+            if isinstance(X, (tuple, list)):
+                # X is a tuple of frame batches, each (B, C, H, W)
+                B = X[0].shape[0]
+                results = [self.transform(*[x[i] for x in X]) for i in range(B)]
+            else:
+                # X is (B, C, H, W) — apply transform independently per sample
+                B = X.shape[0]
+                results = [self.transform(X[i]) for i in range(B)]
+
+            # results: list of B items, each a list of num_crops tensors (C, H, W)
+            # transpose to: list of num_crops tensors, each (B, C, H, W)
+            X = [torch.stack([results[i][j] for i in range(B)]) for j in range(len(results[0]))]
+
+            return idx, X, targets
+
+        return batch
 
     def forward(self, X) -> Dict:
         """Basic forward method. Children methods should call this function,
@@ -523,7 +550,7 @@ class BaseMethod(pl.LightningModule):
         outs = {k: [out[k] for out in outs] for k in outs[0].keys()}
 
         if self.multicrop:
-            multicrop_outs = [self.multicrop_forward(x) for x in X[self.num_large_crops :self.num_crops]]
+            multicrop_outs = [self.multicrop_forward(x) for x in X[self.num_large_crops:self.num_crops]]
             for k in multicrop_outs[0].keys():
                 outs[k] = outs.get(k, []) + [out[k] for out in multicrop_outs]
 
@@ -568,11 +595,11 @@ class BaseMethod(pl.LightningModule):
         return self._base_shared_step(X, targets)
 
     def validation_step(
-        self,
-        batch: List[torch.Tensor],
-        batch_idx: int,
-        dataloader_idx: int = None,
-        update_validation_step_outputs: bool = True,
+            self,
+            batch: List[torch.Tensor],
+            batch_idx: int,
+            dataloader_idx: int = None,
+            update_validation_step_outputs: bool = True,
     ) -> Dict[str, Any]:
         """Validation step for pytorch lightning. It does all the shared operations, such as
         forwarding a batch of images, computing logits and computing metrics.
@@ -632,8 +659,8 @@ class BaseMethod(pl.LightningModule):
 
 class BaseMomentumMethod(BaseMethod):
     def __init__(
-        self,
-        cfg: omegaconf.DictConfig,
+            self,
+            cfg: omegaconf.DictConfig,
     ):
         """Base momentum model that implements all basic operations for all self-supervised methods
         that use a momentum backbone. It adds shared momentum arguments, adds basic learnable
@@ -804,13 +831,13 @@ class BaseMomentumMethod(BaseMethod):
         if self.momentum_classifier is not None:
             # momentum loss and stats
             momentum_outs["momentum_loss"] = (
-                sum(momentum_outs["momentum_loss"]) / self.num_large_crops
+                    sum(momentum_outs["momentum_loss"]) / self.num_large_crops
             )
             momentum_outs["momentum_acc1"] = (
-                sum(momentum_outs["momentum_acc1"]) / self.num_large_crops
+                    sum(momentum_outs["momentum_acc1"]) / self.num_large_crops
             )
             momentum_outs["momentum_acc5"] = (
-                sum(momentum_outs["momentum_acc5"]) / self.num_large_crops
+                    sum(momentum_outs["momentum_acc5"]) / self.num_large_crops
             )
 
             metrics = {
@@ -852,11 +879,11 @@ class BaseMomentumMethod(BaseMethod):
         self.last_step = self.trainer.global_step
 
     def validation_step(
-        self,
-        batch: List[torch.Tensor],
-        batch_idx: int,
-        dataloader_idx: int = None,
-        update_validation_step_outputs: bool = True,
+            self,
+            batch: List[torch.Tensor],
+            batch_idx: int,
+            dataloader_idx: int = None,
+            update_validation_step_outputs: bool = True,
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """Validation step for pytorch lightning. It performs all the shared operations for the
         momentum backbone and classifier, such as forwarding a batch of images in the momentum
