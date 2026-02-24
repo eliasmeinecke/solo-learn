@@ -49,7 +49,7 @@ def main():
         .backbone
     )
     # prepare data
-    train_loader, val_loader = prepare_data(
+    train_loader, val_loader, _, _ = prepare_data(
         args.dataset,
         train_data_path=args.train_data_path,
         val_data_path=args.val_data_path,

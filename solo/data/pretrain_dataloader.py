@@ -24,15 +24,15 @@ from typing import Callable, List, Optional, Sequence, Type, Union
 
 import torch
 import torchvision
+import torchvision.transforms.v2 as v2
 from PIL import Image, ImageFilter, ImageOps
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
-from torchvision import transforms
 from torchvision.datasets import STL10, ImageFolder
+from torchvision.transforms import InterpolationMode
 
 from solo.data.custom.ego4d import Ego4d
-
 
 try:
     from solo.data.h5_dataset import H5Dataset
@@ -40,6 +40,15 @@ except ImportError:
     _h5_available = False
 else:
     _h5_available = True
+
+MEANS_N_STD = {
+    "cifar10": ((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)),
+    "cifar100": ((0.5071, 0.4865, 0.4409), (0.2673, 0.2564, 0.2762)),
+    "stl10": ((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
+    "imagenet100": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
+    "imagenet": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
+    "ego4d": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
+}
 
 
 def dataset_with_index(DatasetClass: Type[Dataset]) -> Type[Dataset]:
@@ -188,103 +197,105 @@ class FullTransformPipeline:
 
 
 def build_transform_pipeline(dataset, cfg):
-    """Creates a pipeline of transformations given a dataset and an augmentation Cfg node.
-    The node needs to be in the following format:
-        crop_size: int
-        [OPTIONAL] mean: float
-        [OPTIONAL] std: float
-        rrc:
-            enabled: bool
-            crop_min_scale: float
-            crop_max_scale: float
-        color_jitter:
-            prob: float
-            brightness: float
-            contrast: float
-            saturation: float
-            hue: float
-        grayscale:
-            prob: float
-        gaussian_blur:
-            prob: float
-        solarization:
-            prob: float
-        equalization:
-            prob: float
-        horizontal_flip:
-            prob: float
     """
-
-    MEANS_N_STD = {
-        "cifar10": ((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)),
-        "cifar100": ((0.5071, 0.4865, 0.4409), (0.2673, 0.2564, 0.2762)),
-        "stl10": ((0.4914, 0.4823, 0.4466), (0.247, 0.243, 0.261)),
-        "imagenet100": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
-        "imagenet": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
-        "ego4d": (IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
-    }
-
+    GPU version of build_transform_pipeline.
+    Applies identical logic but uses torchvision v2 transforms.
+    Expects tensor input (C,H,W) or batched (B,C,H,W).
+    """
     mean, std = MEANS_N_STD.get(
-        dataset, (cfg.get("mean", IMAGENET_DEFAULT_MEAN), cfg.get("std", IMAGENET_DEFAULT_STD))
+        dataset,
+        (cfg.get("mean", IMAGENET_DEFAULT_MEAN),
+         cfg.get("std", IMAGENET_DEFAULT_STD)),
     )
 
     augmentations = []
 
+    # ---- Resize / RandomResizedCrop ----
     if cfg.rrc.enabled:
         augmentations.append(
-            transforms.RandomResizedCrop(
+            v2.RandomResizedCrop(
                 cfg.crop_size,
                 scale=(cfg.rrc.crop_min_scale, cfg.rrc.crop_max_scale),
-                interpolation=transforms.InterpolationMode.BICUBIC,
-            ),
+                interpolation=v2.InterpolationMode.BICUBIC,
+            )
         )
     else:
         augmentations.append(
-            transforms.Resize(
+            v2.Resize(
                 cfg.crop_size,
-                interpolation=transforms.InterpolationMode.BICUBIC,
-            ),
+                interpolation=v2.InterpolationMode.BICUBIC,
+            )
         )
 
+    # ---- Color Jitter ----
     if cfg.color_jitter.prob:
         augmentations.append(
-            transforms.RandomApply(
+            v2.RandomApply(
                 [
-                    transforms.ColorJitter(
-                        cfg.color_jitter.brightness,
-                        cfg.color_jitter.contrast,
-                        cfg.color_jitter.saturation,
-                        cfg.color_jitter.hue,
+                    v2.ColorJitter(
+                        brightness=cfg.color_jitter.brightness,
+                        contrast=cfg.color_jitter.contrast,
+                        saturation=cfg.color_jitter.saturation,
+                        hue=cfg.color_jitter.hue,
                     )
                 ],
                 p=cfg.color_jitter.prob,
-            ),
+            )
         )
 
+    # ---- Grayscale ----
     if cfg.grayscale.prob:
-        augmentations.append(transforms.RandomGrayscale(p=cfg.grayscale.prob))
+        augmentations.append(
+            v2.RandomGrayscale(p=cfg.grayscale.prob)
+        )
 
+    # ---- Gaussian Blur ----
     if cfg.gaussian_blur.prob:
-       augmentations.append(transforms.RandomApply([GaussianBlur()], p=cfg.gaussian_blur.prob))
+        augmentations.append(
+            v2.RandomApply(
+                [
+                    v2.GaussianBlur(
+                        kernel_size=23,
+                        sigma=(0.1, 2.0),
+                    )
+                ],
+                p=cfg.gaussian_blur.prob,
+            )
+        )
 
+    # ---- Solarization ----
     if cfg.solarization.prob:
-        augmentations.append(transforms.RandomApply([Solarization()], p=cfg.solarization.prob))
+        augmentations.append(
+            v2.RandomSolarize(
+                threshold=128,
+                p=cfg.solarization.prob,
+            )
+        )
 
+    # ---- Equalization ----
     if cfg.equalization.prob:
-        augmentations.append(transforms.RandomApply([Equalization()], p=cfg.equalization.prob))
+        augmentations.append(
+            v2.RandomEqualize(p=cfg.equalization.prob)
+        )
 
+    # ---- Horizontal Flip ----
     if cfg.horizontal_flip.prob:
-        augmentations.append(transforms.RandomHorizontalFlip(p=cfg.horizontal_flip.prob))
+        augmentations.append(
+            v2.RandomHorizontalFlip(p=cfg.horizontal_flip.prob)
+        )
 
-    augmentations.append(transforms.ToTensor())
-    augmentations.append(transforms.Normalize(mean=mean, std=std))
+    augmentations.append(v2.ToDtype(torch.float32, scale=True))
 
-    augmentations = transforms.Compose(augmentations)
-    return augmentations
+    # ---- Normalize ----
+    augmentations.append(v2.Normalize(mean=mean, std=std))
+
+    pipeline = v2.Compose(augmentations)
+
+    return pipeline
 
 
 def prepare_n_crop_transform(
-    transforms: List[Callable], num_crops_per_aug: List[int]
+        transforms: List[Callable], num_crops_per_aug: List[int]
 ) -> NCropAugmentation:
     """Turns a single crop transformation to an N crops transformation.
 
@@ -304,15 +315,27 @@ def prepare_n_crop_transform(
     return FullTransformPipeline(T)
 
 
+def build_pre_transform(base_resize=256):
+    """ Transform to prepare image for batch processing (resize + to tensor) """
+    return v2.Compose([
+        v2.Resize(
+            (base_resize, base_resize),
+            interpolation=InterpolationMode.BICUBIC,
+            antialias=True,
+        ),
+        v2.ToImage(),  # ensures image type consistency
+    ])
+
+
 def prepare_datasets(
-    dataset: str,
-    transform: Callable,
-    train_data_path: Optional[Union[str, Path]] = None,
-    data_format: Optional[str] = "image_folder",
-    no_labels: Optional[Union[str, Path]] = False,
-    download: bool = True,
-    data_fraction: float = -1.0,
-    **dataset_kwargs
+        dataset: str,
+        transform: Callable,
+        train_data_path: Optional[Union[str, Path]] = None,
+        data_format: Optional[str] = "image_folder",
+        no_labels: Optional[Union[str, Path]] = False,
+        download: bool = True,
+        data_fraction: float = -1.0,
+        **dataset_kwargs
 ) -> Dataset:
     """Prepares the desired dataset.
 
@@ -411,6 +434,7 @@ def prepare_dataloader(
         num_workers=num_workers,
         pin_memory=True,
         drop_last=True,
+        persistent_workers=True,
         sampler=sampler
     )
     return train_loader

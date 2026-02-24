@@ -61,6 +61,8 @@ class LinearModel(pl.LightningModule):
         cfg: omegaconf.DictConfig,
         loss_func: Callable = None,
         mixup_func: Callable = None,
+        T_train: nn.Module = None,
+        T_val: nn.Module = None,
     ):
         """Implements linear and finetune evaluation.
 
@@ -186,6 +188,10 @@ class LinearModel(pl.LightningModule):
         if not self.finetune:
             for param in self.backbone.parameters():
                 param.requires_grad = False
+
+        # GPU-side augmentation transforms (applied in on_after_batch_transfer)
+        self.T_train = T_train
+        self.T_val = T_val
 
         # keep track of validation metrics
         self.validation_step_outputs = []
@@ -325,6 +331,14 @@ class LinearModel(pl.LightningModule):
         return [optimizer], [scheduler]
 
 
+
+    def on_after_batch_transfer(self, batch, dataloader_idx):
+        """Apply GPU-side augmentation / normalisation after the batch is on device."""
+        X, targets = batch
+        transform = self.T_train if self.training else self.T_val
+        if transform is not None:
+            X = torch.stack([transform(X[i]) for i in range(X.shape[0])])
+        return X, targets
 
     def forward_backbone(self, X: torch.Tensor) -> torch.Tensor:
         return self.backbone(X)
