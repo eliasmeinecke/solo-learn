@@ -138,18 +138,12 @@ def main(cfg: DictConfig):
     else:
         loss_func = torch.nn.CrossEntropyLoss()
 
-    model = LinearModel(backbone, loss_func=loss_func, mixup_func=mixup_func, cfg=cfg)
-    make_contiguous(model)
-    # can provide up to ~20% speed up
-    if not cfg.performance.disable_channel_last:
-        model = model.to(memory_format=torch.channels_last)
-
     if cfg.data.format == "dali":
         val_data_format = "image_folder"
     else:
         val_data_format = cfg.data.format
 
-    train_loader, val_loader = prepare_data(
+    train_loader, val_loader, T_train_gpu, T_val_gpu = prepare_data(
         cfg.data.dataset,
         train_data_path=cfg.data.train_path,
         val_data_path=cfg.data.val_path,
@@ -160,6 +154,19 @@ def main(cfg: DictConfig):
         foveation_cfg=foveation_cfg,
     )
     print("LOADED DATA", cfg.data.dataset)
+
+    model = LinearModel(
+        backbone,
+        loss_func=loss_func,
+        mixup_func=mixup_func,
+        cfg=cfg,
+        T_train=T_train_gpu,
+        T_val=T_val_gpu,
+    )
+    make_contiguous(model)
+    # can provide up to ~20% speed up
+    if not cfg.performance.disable_channel_last:
+        model = model.to(memory_format=torch.channels_last)
 
     if cfg.data.format == "dali":
         assert (

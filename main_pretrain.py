@@ -90,7 +90,7 @@ def main(cfg: DictConfig):
         else:
             val_data_format = cfg.data.format
 
-        _, val_loader = prepare_data_classification(
+        _, val_loader, _, _ = prepare_data_classification(
             cfg.data.dataset,
             train_data_path=cfg.data.train_path,
             val_data_path=cfg.data.val_path,

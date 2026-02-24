@@ -23,15 +23,16 @@ if __name__ == '__main__':
     datasets = [
         'imagenet_42',
         'imagenet100_42',
-        # 'cifar100_224',
-        # 'cifar10_224',
+        'cifar100_224',
+        'cifar10_224',
         'COIL100',
         'DTD',
-        # 'Flowers102',
-        # 'FGVCAircraft',
-        # 'OxfordIIITPet',
-        # 'StanfordCars',
-        # 'STL10',
+        'Flowers102',
+        'FGVCAircraft',
+        'OxfordIIITPet',
+        'StanfordCars',
+        'STL10_224',
+        'SUN397_h5'
         'toybox',
         'core50',
         'imagenet1pct_42',
@@ -58,7 +59,7 @@ if __name__ == '__main__':
         store_ckpt = True if dataset in ['imagenet_42', 'Places365_h5', "imagenet1pct_42", "imagenet10pct_42"] else False
 
         for i, row in meta.iterrows():
-            name = (dataset + '_' + row['model_name']).replace("=", "\=")
+            name = ("debug" + '_'  + dataset + '_' + row['model_name']).replace("=", "\=")
 
             ckpt_name = f"{row['id']}/{row['model_name']}-{row['id']}-ep={args.epoch}.ckpt"
             ckpt_path = root / ckpt_name
@@ -72,5 +73,4 @@ if __name__ == '__main__':
             print(f"Running command: {cmd}")
             subprocess.run(cmd, shell=True)
             bar.update(1)
-            break
 
