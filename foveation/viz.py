@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import torch
 import torchvision.transforms.functional as TF
 
-from foveation.factory import FoveationTransform
+from foveation.factory import GazePredictor
 from foveation.methods.gaze_crop import GazeCenteredCrop
 from foveation.methods.radial_blur import RadialBlurFoveation
 from foveation.methods.cm import CortalMagnification
@@ -41,9 +41,7 @@ def main():
     saliency = saliency.astype(np.float32)
      
     # updated after gpu-switch:
-    viz_fov(frame, annot, saliency, "blur")
     viz_fov(frame, annot, saliency, "cm") # methods: crop, blur, cm
-    # viz_eval_saliency(frame)
     
     # needs changing after gpu-switch: (maybe pull gaze & saliency tensors to main?)
     # benchmark_fov(frame, annot, saliency, "cm")
@@ -51,6 +49,7 @@ def main():
     # viz_blur_heatmaps(frame, annot, saliency)
     # viz_cm_overview(frame, annot, saliency)
     # viz_saliency(frame, annot, saliency)
+    # viz_eval_saliency(frame)
 
 
 def viz_fov(frame, annot, saliency, method):
@@ -375,7 +374,8 @@ def viz_saliency(frame, annot, saliency):
     
 def viz_eval_saliency(frame):
 
-    foveation_transform = FoveationTransform(foveation=None, base_transform=lambda x: x)
+    # has to be changed completely
+    foveation_transform = GazePredictor(foveation=None, base_transform=lambda x: x)
     
     annot = foveation_transform._build_center_annotation(frame)
     saliency = foveation_transform._build_center_saliency()

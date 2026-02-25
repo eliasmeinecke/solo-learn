@@ -39,6 +39,8 @@ from solo.utils.misc import (
 )
 from solo.utils.multi_linear import setup_linear_classifiers
 
+from foveation.factory import GazePredictor
+
 
 class LinearModel(pl.LightningModule):
     _OPTIMIZERS = {
@@ -63,6 +65,7 @@ class LinearModel(pl.LightningModule):
         mixup_func: Callable = None,
         T_train: nn.Module = None,
         T_val: nn.Module = None,
+        foveation = None
     ):
         """Implements linear and finetune evaluation.
 
@@ -192,6 +195,8 @@ class LinearModel(pl.LightningModule):
         # GPU-side augmentation transforms (applied in on_after_batch_transfer)
         self.T_train = T_train
         self.T_val = T_val
+        self.foveation = foveation
+        self.gaze_predictor = GazePredictor()
 
         # keep track of validation metrics
         self.validation_step_outputs = []
@@ -336,6 +341,9 @@ class LinearModel(pl.LightningModule):
         """Apply GPU-side augmentation / normalisation after the batch is on device."""
         X, targets = batch
         transform = self.T_train if self.training else self.T_val
+        if self.foveation is not None:
+            gaze, saliency = self.gaze_predictor(X)
+            X = self.foveation(X, gaze, saliency)
         if transform is not None:
             X = torch.stack([transform(X[i]) for i in range(X.shape[0])])
         return X, targets

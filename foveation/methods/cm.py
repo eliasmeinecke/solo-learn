@@ -24,7 +24,7 @@ class CortalMagnification(nn.Module):
         
         # ensure saliency matches image size & normalize
         if saliency.shape[-2:] != (H, W):
-            saliency = torch.nn.functional.interpolate(
+            saliency = F.interpolate(
                 saliency,
                 size=(H, W),
                 mode="bilinear",

@@ -42,6 +42,8 @@ from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.misc import make_contiguous
 
+from foveation.factory import setup_foveation
+
 try:
     from solo.data.dali_dataloader import ClassificationDALIDataModule
 except ImportError:
@@ -102,7 +104,8 @@ def main(cfg: DictConfig):
 
     else:
         print("[LinearEval] No args.json found next to checkpoint")
-
+    foveation = setup_foveation(foveation_cfg)
+    
     state = torch.load(ckpt_path, map_location="cpu")["state_dict"]
     for k in list(state.keys()):
         if "encoder" in k:
@@ -162,6 +165,7 @@ def main(cfg: DictConfig):
         cfg=cfg,
         T_train=T_train_gpu,
         T_val=T_val_gpu,
+        foveation=foveation
     )
     make_contiguous(model)
     # can provide up to ~20% speed up

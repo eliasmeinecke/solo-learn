@@ -1,48 +1,79 @@
 
-import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 from foveation.methods.radial_blur import RadialBlurFoveation
 from foveation.methods.cm import CortalMagnification
 
-class CenterGaze:
-    def __init__(self, x, y):
-        self.gaze_loc_x = x
-        self.gaze_loc_y = y
-        
+class GazePredictor(nn.Module):
+    """
+    Produces gaze and saliency tensors for linear evaluation.
 
-class FoveationTransform:
-    def __init__(self, foveation, base_transform):
-        self.foveation = foveation
-        self.base_transform = base_transform
+    Default:
+        - gaze = image center
+        - saliency = centered Gaussian blob
 
-    def _build_center_annotation(self, img):
-        W, H = img.size
-        return CenterGaze(W // 2, H // 2)
+    Can later be extended with:
+        - learned gaze predictor
+        - learned saliency predictor
+    """
 
-    def _build_center_saliency(self):
-        sal_res = 64
-        xs = np.arange(sal_res)
-        ys = np.arange(sal_res)
-        X, Y = np.meshgrid(xs, ys)
+    def __init__(self, saliency_resolution=64, gaussian_sigma_ratio=0.15):
+        super().__init__()
+        self.saliency_resolution = saliency_resolution
+        self.gaussian_sigma_ratio = gaussian_sigma_ratio
 
-        cx = sal_res // 2
-        cy = sal_res // 2
-        sigma = 0.15 * sal_res
+    def forward(self, img):
+        """
+        img: (B, C, H, W)
 
-        S = np.exp(-((X - cx)**2 + (Y - cy)**2) / (2 * sigma**2))
-        S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+        returns:
+            gaze: (B, 2)
+            saliency: (B, 1, H, W)
+        """
 
-        return S.astype(np.float32)
+        device = img.device
+        B, C, H, W = img.shape
 
-    def __call__(self, img):
+        # Center Gaze
+        gaze_x = torch.full((B,), W / 2, device=device)
+        gaze_y = torch.full((B,), H / 2, device=device)
 
-        if self.foveation is not None:
-            # later add gaze/saliency-predictors?
-            annot = self._build_center_annotation(img)
-            saliency = self._build_center_saliency()
-            img = self.foveation(img, annot, saliency)
-            
-        return self.base_transform(img)
+        gaze = torch.stack([gaze_x, gaze_y], dim=1)  # (B, 2)
+
+    
+        # Center Gaussian Saliency
+        sal_res = self.saliency_resolution
+
+        ys = torch.arange(sal_res, device=device).view(1, sal_res, 1)
+        xs = torch.arange(sal_res, device=device).view(1, 1, sal_res)
+
+        ys = ys.expand(B, sal_res, sal_res)
+        xs = xs.expand(B, sal_res, sal_res)
+
+        cx = sal_res / 2
+        cy = sal_res / 2
+        sigma = self.gaussian_sigma_ratio * sal_res
+
+        sal = torch.exp(
+            -((xs - cx) ** 2 + (ys - cy) ** 2) / (2 * sigma**2)
+        )
+
+        sal = sal / (sal.amax(dim=(1, 2), keepdim=True) + 1e-6)
+
+        sal = sal.unsqueeze(1)  # (B, 1, sal_res, sal_res)
+
+        # Upscale saliency to image resolution
+        if sal_res != H:
+            sal = F.interpolate(
+                sal,
+                size=(H, W),
+                mode="bilinear",
+                align_corners=False,
+            )
+
+        return gaze, sal
     
     
 def setup_foveation(foveation_cfg):

@@ -313,24 +313,8 @@ def prepare_datasets(
     """
 
     if foveation_cfg is not None:
-        fov_type = foveation_cfg.get("type", None)
-
-        if fov_type in ["blur", "cm"]:
-
-            params = foveation_cfg.get(fov_type, {})
-
-            print(
-                f"[Foveation] Classification mode: type={fov_type} | "
-                + ", ".join(f"{k}={v}" for k, v in params.items())
-            )
-
-            foveation = build_foveation(foveation_cfg)
-
-            T_train = FoveationTransform(foveation, T_train)
-            T_val = FoveationTransform(foveation, T_val)
-
-        else:
-            print("[Foveation] Disabled for classification")
+        # TODO: Implement logic
+        pass
 
 
     if train_data_path is None:

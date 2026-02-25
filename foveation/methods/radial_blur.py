@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.transforms.functional as TF
 
 
@@ -34,7 +35,7 @@ class RadialBlurFoveation(nn.Module):
         
         # ensure saliency matches image size & normalize
         if saliency.shape[-2:] != (H, W):
-            saliency = torch.nn.functional.interpolate(
+            saliency = F.interpolate(
                 saliency,
                 size=(H, W),
                 mode="bilinear",
