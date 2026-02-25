@@ -28,10 +28,12 @@ momentum:
   final_tau: 0.996
 data:
   dataset: ego4d
-  train_path: "/home/data/elias/Ego4dDivSubset"
+  train_path: ${paths.data_train_path}
   val_path: None
   format: "h5"
   num_workers: 4
+  gpu_augmentation: True
+  gpu_pre_image_size: 540
   dataset_kwargs:
     time_window: 15
     foveation:
@@ -60,7 +62,7 @@ scheduler:
   warmup_epochs: 0.2
 checkpoint:
   enabled: True
-  dir: "/home/data/elias/trained_models"
+  dir: ${paths.checkpoint_dir}
   frequency: 1
   keep_prev: False
 auto_resume:
@@ -68,8 +70,8 @@ auto_resume:
 knn_clb:
   enabled: True
   dataset: imagenet100
-  train_path:  "/home/data/elias/imagenet100/train"
-  val_path:  "/home/data/elias/imagenet100/val"
+  train_path:  ${paths.knn_clb_train_path}
+  val_path:  ${paths.knn_clb_val_path}
   num_workers: 4
   batch_size: 16
   k: [ 10, 20, 50, 100 ]

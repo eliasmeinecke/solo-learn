@@ -41,7 +41,8 @@ def main():
     saliency = saliency.astype(np.float32)
      
     # updated after gpu-switch:
-    viz_fov(frame, annot, saliency, "crop") # methods: crop, blur, cm
+    viz_fov(frame, annot, saliency, "blur")
+    viz_fov(frame, annot, saliency, "cm") # methods: crop, blur, cm
     # viz_eval_saliency(frame)
     
     # needs changing after gpu-switch: (maybe pull gaze & saliency tensors to main?)

@@ -21,6 +21,17 @@ class CortalMagnification(nn.Module):
         B, C, H, W = img.shape
 
         img = img.float()
+        
+        # ensure saliency matches image size & normalize
+        if saliency.shape[-2:] != (H, W):
+            saliency = torch.nn.functional.interpolate(
+                saliency,
+                size=(H, W),
+                mode="bilinear",
+                align_corners=False,
+            )
+        saliency = saliency / (saliency.amax(dim=(2,3), keepdim=True) + 1e-6)
+        saliency = saliency.squeeze(1)
 
         # coordinate grid (batchfähig)
         ys = torch.arange(H, device=device).view(1, H, 1)
@@ -36,13 +47,9 @@ class CortalMagnification(nn.Module):
         dy = ys - y_g
 
         r = torch.sqrt(dx**2 + dy**2 + 1e-6)
-        
-        # saliency-weighted spread
-        S = saliency.squeeze(1)
-        S = S / (S.sum(dim=(1, 2), keepdim=True) + 1e-6)
 
-        mean_r = torch.sum(S * r, dim=(1, 2), keepdim=True)
-        mean_r2 = torch.sum(S * r**2, dim=(1, 2), keepdim=True)
+        mean_r = torch.sum(saliency * r, dim=(1, 2), keepdim=True)
+        mean_r2 = torch.sum(saliency * r**2, dim=(1, 2), keepdim=True)
 
         var_r = mean_r2 - mean_r**2
         std_r = torch.sqrt(torch.clamp(var_r, min=0.0))
@@ -57,16 +64,14 @@ class CortalMagnification(nn.Module):
 
         fov_eff = fov * (1.0 + self.saliency_beta * spread_norm)
 
-        
         # radial transform
         r_new = radial_quadratic_batch(r, fov_eff, K)
 
-        dx_norm = dx / r
-        dy_norm = dy / r
+        dx_norm = dx / (r + 1e-6)
+        dy_norm = dy / (r + 1e-6)
 
         X_new = x_g + dx_norm * r_new
         Y_new = y_g + dy_norm * r_new
-
         
         # normalize for grid_sample
         X_norm = (X_new / (W - 1)) * 2 - 1
@@ -87,25 +92,12 @@ class CortalMagnification(nn.Module):
 
 def radial_quadratic_batch(r, fov, K):
 
-    r_tfm = torch.zeros_like(r)
+    r_out = (r + K)**2 / (2 * (fov + K)) + (fov - K) / 2
 
-    mask_fovea = r < fov
+    r_tfm = torch.where(r < fov, r, r_out)
 
-    # inside fovea
-    r_tfm[mask_fovea] = r[mask_fovea]
-
-    # outside fovea
-    r_out = r[~mask_fovea]
-
-    r_tfm[~mask_fovea] = (
-        (r_out + K)**2 / (2 * (fov + K))
-        + (fov - K) / 2
+    coef = r.amax(dim=(1,2), keepdim=True) / (
+        r_tfm.amax(dim=(1,2), keepdim=True) + 1e-6
     )
 
-    coef = r.amax(dim=(1, 2), keepdim=True) / (
-        r_tfm.amax(dim=(1, 2), keepdim=True) + 1e-6
-    )
-
-    r_new = coef * r_tfm
-
-    return r_new
+    return coef * r_tfm

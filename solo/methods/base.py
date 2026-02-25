@@ -265,6 +265,7 @@ class BaseMethod(pl.LightningModule):
 
         # Define transform on batches
         self.transform = None
+        self.foveation = None
 
     @staticmethod
     def add_and_assert_specific_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
@@ -427,24 +428,32 @@ class BaseMethod(pl.LightningModule):
         """
         Called after batch is moved to device and applies transforms on GPU.
         """
-
+        
         if self.training and self.transform is not None:
+    
+            # GPU augmentation mode
             idx, X, targets = batch
+            
+            if isinstance(X, tuple) and len(X) == 3:
 
-            if isinstance(X, (tuple, list)):
-                # X is a tuple of frame batches, each (B, C, H, W)
-                B = X[0].shape[0]
-                results = [self.transform(*[x[i] for x in X]) for i in range(B)]
-            else:
-                # X is (B, C, H, W) — apply transform independently per sample
-                B = X.shape[0]
-                results = [self.transform(X[i]) for i in range(B)]
+                (img1, img2), (gaze1, gaze2), (sal1, sal2) = X
 
-            # results: list of B items, each a list of num_crops tensors (C, H, W)
-            # transpose to: list of num_crops tensors, each (B, C, H, W)
-            X = [torch.stack([results[i][j] for i in range(B)]) for j in range(len(results[0]))]
+                if self.foveation is not None:
+                    img1 = self.foveation(img1, gaze1, sal1)
+                    img2 = self.foveation(img2, gaze2, sal2)
+                
+                # multi-crop
+                B = img1.shape[0]
 
-            return idx, X, targets
+                results = []
+                for i in range(B):
+                    crops = self.transform(img1[i], img2[i])
+                    results.append(crops)
+
+                # transpose list-of-lists
+                X = [torch.stack([results[i][j] for i in range(B)]) for j in range(len(results[0]))]
+
+                return idx, X, targets
 
         return batch
 

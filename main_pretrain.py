@@ -43,6 +43,8 @@ from solo.utils.checkpointer import Checkpointer
 from solo.utils.knn_callback import KNNCallback
 from solo.utils.misc import make_contiguous, omegaconf_select
 
+from foveation.factory import setup_foveation
+
 try:
     from solo.data.dali_dataloader import PretrainDALIDataModule, build_transform_pipeline_dali
 except ImportError:
@@ -99,6 +101,9 @@ def main(cfg: DictConfig):
             num_workers=cfg.data.num_workers,
         )
 
+    # foveation config
+    foveation_cfg = cfg.data.dataset_kwargs.get("foveation", None)
+    
     # pretrain dataloader
     if cfg.data.format == "dali":
         assert (
@@ -142,6 +147,7 @@ def main(cfg: DictConfig):
 
         if cfg.data.gpu_augmentation:
             model.transform = transform # assign the transform to the model so that it can be used for gpu augmentation
+            model.foveation = setup_foveation(foveation_cfg)
             transform = build_pre_transform(base_resize=cfg.data.gpu_pre_image_size)
 
             if cfg.debug_augmentations:
@@ -183,8 +189,7 @@ def main(cfg: DictConfig):
     elif cfg.resume_from_checkpoint is not None:
         ckpt_path = cfg.resume_from_checkpoint
         del cfg.resume_from_checkpoint
-
-    foveation_cfg = cfg.data.dataset_kwargs.get("foveation", None)
+    
     callbacks = []
     if cfg.knn_clb.enabled:
         callbacks.append(KNNCallback(cfg.knn_clb, foveation_cfg=foveation_cfg))

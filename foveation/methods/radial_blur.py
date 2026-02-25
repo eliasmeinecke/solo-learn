@@ -31,11 +31,19 @@ class RadialBlurFoveation(nn.Module):
         B, C, H, W = img.shape
 
         img = img.float()
-
-        # --------------------------------------------------
+        
+        # ensure saliency matches image size & normalize
+        if saliency.shape[-2:] != (H, W):
+            saliency = torch.nn.functional.interpolate(
+                saliency,
+                size=(H, W),
+                mode="bilinear",
+                align_corners=False,
+            )
+        saliency = saliency / (saliency.amax(dim=(2,3), keepdim=True) + 1e-6)
+        saliency = saliency.squeeze(1)
+        
         # create coordinate grid (GPU)
-        # --------------------------------------------------
-
         ys = torch.arange(H, device=device).view(1, H, 1)
         xs = torch.arange(W, device=device).view(1, 1, W)
 
@@ -49,12 +57,9 @@ class RadialBlurFoveation(nn.Module):
         R = torch.sqrt((xs - x_g) ** 2 + (ys - y_g) ** 2)
 
         R_max = R.amax(dim=(1, 2), keepdim=True)
-        R_eff = R / (1.0 + self.saliency_alpha * saliency.squeeze(1))
+        R_eff = R / (1.0 + self.saliency_alpha * saliency)
 
-        # --------------------------------------------------
         # radii & sigmas
-        # --------------------------------------------------
-
         radii = [f * R_max for f in self.radii_frac]
         transition_width = self.transition_frac * R_max
 
@@ -64,10 +69,7 @@ class RadialBlurFoveation(nn.Module):
         for i in range(len(self.radii_frac)):
             sigmas.append(sigma_base * (self.sigma_growth ** i))
 
-        # --------------------------------------------------
         # blurred versions
-        # --------------------------------------------------
-
         blurred_imgs = []
         for sigma in sigmas:
             if sigma == 0:
@@ -78,10 +80,7 @@ class RadialBlurFoveation(nn.Module):
                 blurred = TF.gaussian_blur(img, kernel_size=k, sigma=sigma)
                 blurred_imgs.append(blurred)
 
-        # --------------------------------------------------
         # ring centers
-        # --------------------------------------------------
-
         ring_centers = []
         prev = torch.zeros_like(R_max)
 
@@ -91,10 +90,7 @@ class RadialBlurFoveation(nn.Module):
 
         ring_centers.append(prev + transition_width)
 
-        # --------------------------------------------------
         # soft weights
-        # --------------------------------------------------
-
         weights = []
         for c in ring_centers:
             w = torch.exp(-0.5 * ((R_eff - c) / transition_width) ** 2)
@@ -103,10 +99,7 @@ class RadialBlurFoveation(nn.Module):
         weights = torch.stack(weights, dim=0)
         weights = weights / (weights.sum(dim=0, keepdim=True) + 1e-6)
 
-        # --------------------------------------------------
         # weighted blending
-        # --------------------------------------------------
-
         output = torch.zeros_like(img)
 
         for w, img_blur in zip(weights, blurred_imgs):

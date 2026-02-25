@@ -1,7 +1,8 @@
-from typing import Optional
 
 import numpy as np
 
+from foveation.methods.radial_blur import RadialBlurFoveation
+from foveation.methods.cm import CortalMagnification
 
 class CenterGaze:
     def __init__(self, x, y):
@@ -42,3 +43,20 @@ class FoveationTransform:
             img = self.foveation(img, annot, saliency)
             
         return self.base_transform(img)
+    
+    
+def setup_foveation(foveation_cfg):
+    
+    if foveation_cfg is None:
+        return None
+
+    fov_type = foveation_cfg.get("type", None)
+    params = foveation_cfg.get(fov_type, {})
+    if fov_type == "blur":
+        foveation = RadialBlurFoveation(**params)
+    elif fov_type == "cm":
+        foveation = CortalMagnification(**params)
+    else:
+        foveation = None
+        
+    return foveation

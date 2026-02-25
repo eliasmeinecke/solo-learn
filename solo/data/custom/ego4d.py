@@ -102,5 +102,5 @@ class Ego4d(Dataset):
         return (
             (img1, img2),
             (gaze, gaze_pair),
-            (saliency, saliency)
+            (saliency, saliency_pair)
         ), -1 
