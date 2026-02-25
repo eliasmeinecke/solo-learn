@@ -2,12 +2,11 @@
 import numpy as np
 from PIL import Image
 import pandas as pd
-from foveation.methods.base import Foveation
         
 """
 Inspired by: A NEW FOVEAL CARTESIAN GEOMETRY APPROACH USED FOR OBJECT TRACKING. José Martínez, Leopoldo Altamirano 
 """
-class FovealCartesianGeometry(Foveation):
+class FovealCartesianGeometry():
     def __init__(self, p0=64, alpha=0.5, beta=0.0):
         self.p0 = p0
         self.alpha = alpha

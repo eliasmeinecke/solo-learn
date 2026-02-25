@@ -1,11 +1,6 @@
 from typing import Optional
 
 import numpy as np
-import cv2
-
-from foveation.methods.gaze_crop import GazeCenteredCrop
-from foveation.methods.radial_blur import RadialBlurFoveation
-from foveation.methods.cm import CortalMagnification
 
 
 class CenterGaze:
@@ -47,30 +42,3 @@ class FoveationTransform:
             img = self.foveation(img, annot, saliency)
             
         return self.base_transform(img)
-    
-    
-def build_foveation(fov_cfg: Optional[dict]):
-    if fov_cfg is None:
-        print("[Foveation] None")
-        return None
-
-    fov_type = fov_cfg.get("type", None)
-    if fov_type not in ["crop", "blur", "cm"]:
-        print("[Foveation] Disabled")
-        return None
-
-    params = fov_cfg.get(fov_type, {})
-
-    print(
-        f"[Foveation] type={fov_type} | "
-        + ", ".join(f"{k}={v}" for k, v in params.items())
-    )
-
-    if fov_type == "crop":
-        return GazeCenteredCrop(**params)
-    if fov_type == "blur":
-        return RadialBlurFoveation(**params)
-    if fov_type == "cm":
-        return CortalMagnification(**params)
-
-    raise ValueError(f"Unknown foveation type: {fov_type}")

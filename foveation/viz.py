@@ -10,14 +10,17 @@ from PIL import Image
 from pathlib import Path
 from types import SimpleNamespace
 import torch
+import torchvision.transforms.functional as TF
 
 from foveation.factory import FoveationTransform
 from foveation.methods.gaze_crop import GazeCenteredCrop
 from foveation.methods.radial_blur import RadialBlurFoveation
 from foveation.methods.cm import CortalMagnification
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main():
+
     ANNOT_PATH = "/home/data/elias/Ego4dDivSubset/annot.parquet"
     H5_PATH = "/home/data/elias/Ego4dDivSubset/ego4d_diverse_subset.h5"
 
@@ -37,38 +40,54 @@ def main():
     annot = df.iloc[i]
     saliency = saliency.astype(np.float32)
      
-    # methods: crop, blur, cm
-    # viz_fov(frame, annot, saliency, "cm")
-    # benchmark_fov(frame, annot, saliency, "cm")
+    # updated after gpu-switch:
+    viz_fov(frame, annot, saliency, "crop") # methods: crop, blur, cm
+    # viz_eval_saliency(frame)
     
+    # needs changing after gpu-switch: (maybe pull gaze & saliency tensors to main?)
+    # benchmark_fov(frame, annot, saliency, "cm")
     # viz_relative_sigmas(frame, annot, saliency)
     # viz_blur_heatmaps(frame, annot, saliency)
-    
-    viz_cm_overview(frame, annot, saliency)
-    
+    # viz_cm_overview(frame, annot, saliency)
     # viz_saliency(frame, annot, saliency)
-    # viz_eval_saliency(frame, FoveationTransform(foveation=None, base_transform=lambda x: x))
 
 
 def viz_fov(frame, annot, saliency, method):
-    
+
     img_np = np.array(frame)
     H, W, _ = img_np.shape
 
     x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
-    S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
-    S = (S - S.min()) / (S.max() - S.min() + 1e-6)
-    
+
     if method == "crop":
-        out = GazeCenteredCrop()(frame, annot, S)
-    elif method == "blur":
-        out = RadialBlurFoveation()(frame, annot, S)
-    elif method == "cm":  # wip
-        out = CortalMagnification()(frame, annot, S)
+        out = GazeCenteredCrop()(frame, annot)
+    elif method in ["blur", "cm"]: # GPU Foveations
+
+        # ---- Image → Tensor ----
+        img_tensor = torch.from_numpy(img_np).permute(2, 0, 1)  # C,H,W
+        img_tensor = img_tensor.unsqueeze(0).to(device)  # B,C,H,W
+        img_tensor = img_tensor.to(torch.uint8)
+
+        # ---- Saliency ----
+        S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
+        S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+
+        sal_tensor = torch.from_numpy(S).unsqueeze(0).unsqueeze(0)
+        sal_tensor = sal_tensor.to(device).float()
+
+        gaze_tensor = torch.tensor([[x_g, y_g]], device=device).float()
+
+        if method == "blur":
+            fov = RadialBlurFoveation().to(device)
+        else:
+            fov = CortalMagnification().to(device)
+        with torch.no_grad():
+            out_tensor = fov(img_tensor, gaze_tensor, sal_tensor)
+
+        out_tensor = out_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
+        out = Image.fromarray(out_tensor.astype(np.uint8))
     else:
         out = frame
-    
-    out.resize((540, 540), resample=Image.BILINEAR)
 
     plt.figure(figsize=(8, 4))
     plt.subplot(1, 2, 1)
@@ -353,8 +372,10 @@ def viz_saliency(frame, annot, saliency):
     print("Saved ego4d_example.png")  
     
     
-def viz_eval_saliency(frame, foveation_transform):
+def viz_eval_saliency(frame):
 
+    foveation_transform = FoveationTransform(foveation=None, base_transform=lambda x: x)
+    
     annot = foveation_transform._build_center_annotation(frame)
     saliency = foveation_transform._build_center_saliency()
     
