@@ -41,14 +41,15 @@ def main():
     saliency = saliency.astype(np.float32)
      
     # updated after gpu-switch:
-    viz_fov(frame, annot, saliency, "cm") # methods: crop, blur, cm
+    # viz_fov(frame, annot, saliency, "cm") # methods: crop, blur, cm
+    viz_eval_saliency(frame)
     
     # needs changing after gpu-switch: (maybe pull gaze & saliency tensors to main?)
     # viz_relative_sigmas(frame, annot, saliency)
     # viz_blur_heatmaps(frame, annot, saliency)
     # viz_cm_overview(frame, annot, saliency)
     # viz_saliency(frame, annot, saliency)
-    # viz_eval_saliency(frame)
+    
 
 
 def viz_fov(frame, annot, saliency, method):
@@ -343,28 +344,57 @@ def viz_saliency(frame, annot, saliency):
     
     
 def viz_eval_saliency(frame):
+    """
+    Visualize GazePredictor saliency output for a single frame.
 
-    # has to be changed completely
-    foveation_transform = GazePredictor()
-    
-    annot = foveation_transform._build_center_annotation(frame)
-    saliency = foveation_transform._build_center_saliency()
-    
+    Args:
+        frame (PIL.Image or np.ndarray): RGB image
+        save_name (str): output filename
+    """
+
+    # Prepare image
+    if isinstance(frame, Image.Image):
+        img_np = np.array(frame)
+    else:
+        img_np = frame
+
+    H, W = img_np.shape[:2]
+
+    # Convert to tensor (B,C,H,W)
+    img_tensor = (
+        torch.from_numpy(img_np)
+        .permute(2, 0, 1)
+        .unsqueeze(0)
+        .to(torch.uint8)
+    )
+
+    # Run GazePredictor
+    gaze_predictor = GazePredictor()
+    gaze, saliency = gaze_predictor(img_tensor)
+
+    # Remove batch dimension
+    gaze = gaze[0]
+    saliency = saliency[0, 0].cpu().numpy()
+
+    gaze_x, gaze_y = gaze.tolist()
+
+    # Find saliency maximum
     flat_max = saliency.argmax()
-    max_x, max_y = flat_max % 64, flat_max // 64
+    max_y, max_x = np.unravel_index(flat_max, saliency.shape)
 
-    fig, ax = plt.subplots(1, 2, figsize=(8, 4))
+    # Plot
+    fig, ax = plt.subplots(1, 2, figsize=(10, 4))
 
-    # original
-    ax[0].imshow(np.array(frame))
-    ax[0].scatter(annot.gaze_loc_x, annot.gaze_loc_y, c="red", s=50)
-    ax[0].set_title("Image + Gaze")
+    # Image + gaze
+    ax[0].imshow(img_np)
+    ax[0].scatter(gaze_x, gaze_y, c="red", s=60)
+    ax[0].set_title("Image + Predicted Gaze")
     ax[0].axis("off")
 
-    # saliency
+    # Saliency
     ax[1].imshow(saliency, cmap="viridis")
-    ax[1].scatter(max_x, max_y, c="red", s=50)
-    ax[1].set_title("Saliency + Max")
+    ax[1].scatter(max_x, max_y, c="red", s=60)
+    ax[1].set_title("Saliency Map + Maximum")
     ax[1].axis("off")
 
     plt.tight_layout()

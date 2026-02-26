@@ -1,5 +1,5 @@
 defaults:
-  - paths: default
+  - paths: 42_cluster
   - _self_
   - augmentations: asymmetric.yaml
   - wandb: private.yaml
@@ -12,7 +12,7 @@ hydra:
   run:
     dir: .
 
-name: "mocov3-ego4d-blur-nosal"
+name: "mocov3-ego4d-blur-nosal-gpu-aug"
 method: "mocov3"
 backbone:
   name: "resnet50"

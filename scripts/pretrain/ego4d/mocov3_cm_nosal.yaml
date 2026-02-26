@@ -1,5 +1,5 @@
 defaults:
-  - paths: default
+  - paths: 42_cluster
   - _self_
   - augmentations: asymmetric.yaml
   - wandb: private.yaml
@@ -12,7 +12,7 @@ hydra:
   run:
     dir: .
 
-name: "mocov3-ego4d-blur-sal"
+name: "mocov3-ego4d-cm-nosal-gpu-aug"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -37,19 +37,19 @@ data:
   dataset_kwargs:
     time_window: 15
     foveation:
-      type: "blur"
+      type: "cm"
       crop:
         crop_size: 336
       blur:
         radii_frac: [0.3, 0.7]
         sigma_base_frac: 0.006
         sigma_growth: 2
-        saliency_alpha: 5.0
+        saliency_alpha: 0.0
         transition_frac: 0.1
       cm:
         fov_ratio: 0.3125
         K_ratio: 0.208
-        saliency_beta: 1.0
+        saliency_beta: 0.0
 optimizer:
   name: "lars"
   batch_size: 128
