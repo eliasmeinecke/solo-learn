@@ -5,21 +5,16 @@ import torchvision.transforms.functional as TF
 
 
 class RadialBlurFoveation(nn.Module):
-    def __init__(
-        self,
-        radii_frac=[0.3, 0.7],
-        sigma_base_frac=0.006,
-        sigma_growth=2.0,
-        saliency_alpha=5.0,
-        transition_frac=0.1,
-    ):
+    def __init__(self, radii_frac=[0.3, 0.7], sigma_base_frac=0.006, sigma_growth=2.0, saliency_alpha=5.0, transition_frac=0.1):
         super().__init__()
-
         self.radii_frac = radii_frac
         self.sigma_base_frac = sigma_base_frac
         self.sigma_growth = sigma_growth
         self.saliency_alpha = saliency_alpha
         self.transition_frac = transition_frac
+        self.register_buffer("_grid_y", None, persistent=False)
+        self.register_buffer("_grid_x", None, persistent=False)
+        self._grid_size = None
 
     def forward(self, img, gaze, saliency):
         """
@@ -30,7 +25,6 @@ class RadialBlurFoveation(nn.Module):
 
         device = img.device
         B, C, H, W = img.shape
-
         img = img.float()
         
         # ensure saliency matches image size & normalize
@@ -44,12 +38,17 @@ class RadialBlurFoveation(nn.Module):
         saliency = saliency / (saliency.amax(dim=(2,3), keepdim=True) + 1e-6)
         saliency = saliency.squeeze(1)
         
-        # create coordinate grid (GPU)
-        ys = torch.arange(H, device=device).view(1, H, 1)
-        xs = torch.arange(W, device=device).view(1, 1, W)
+        if self._grid_y is None or self._grid_size != (H, W):
 
-        ys = ys.expand(B, H, W)
-        xs = xs.expand(B, H, W)
+            ys = torch.arange(H, device=device, dtype=torch.float32).view(1, H, 1)
+            xs = torch.arange(W, device=device, dtype=torch.float32).view(1, 1, W)
+
+            self._grid_y = ys
+            self._grid_x = xs
+            self._grid_size = (H, W)
+
+        ys = self._grid_y.expand(B, H, W)
+        xs = self._grid_x.expand(B, H, W)
 
         x_g = gaze[:, 0].view(B, 1, 1)
         y_g = gaze[:, 1].view(B, 1, 1)

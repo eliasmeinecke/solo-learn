@@ -26,6 +26,7 @@ import omegaconf
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.distributed as dist
 from torch.optim.lr_scheduler import ExponentialLR, MultiStepLR, ReduceLROnPlateau
 from torchvision.models.feature_extraction import create_feature_extractor
 
@@ -197,6 +198,7 @@ class LinearModel(pl.LightningModule):
         self.T_val = T_val
         self.foveation = foveation
         self.gaze_predictor = GazePredictor()
+        self._foveation_debug_printed = False
 
         # keep track of validation metrics
         self.validation_step_outputs = []
@@ -342,6 +344,14 @@ class LinearModel(pl.LightningModule):
         X, targets = batch
         transform = self.T_train if self.training else self.T_val
         if self.foveation is not None:
+            if (
+                    not self._foveation_debug_printed
+                    and (not dist.is_available()
+                        or not dist.is_initialized()
+                        or dist.get_rank() == 0)
+                ):
+                    print("\n[FOVEATION DEBUG] Linear Eval foveation is ACTIVE on GPU\n")
+                    self._foveation_debug_printed = True
             gaze, saliency = self.gaze_predictor(X)
             X = self.foveation(X, gaze, saliency)
         if transform is not None:

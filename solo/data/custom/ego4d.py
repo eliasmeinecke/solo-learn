@@ -83,24 +83,12 @@ class Ego4d(Dataset):
         if isinstance(img_out, list):
             return img_out, -1
 
-        # GPU augmentation mode (could be reduced by looking at fov_type, only returning essential info and checking as well later)
         img1, img2 = img_out
         
-        gaze = torch.tensor(
-            [dp.gaze_loc_x, dp.gaze_loc_y],
-            dtype=torch.float32
-        )
+        g1 = torch.tensor([dp.gaze_loc_x, dp.gaze_loc_y], dtype=torch.float32)
+        g2 = torch.tensor([dp_pair.gaze_loc_x, dp_pair.gaze_loc_y],dtype=torch.float32)
 
-        gaze_pair = torch.tensor(
-            [dp_pair.gaze_loc_x, dp_pair.gaze_loc_y],
-            dtype=torch.float32
-        )
+        s1 = torch.from_numpy(saliency).unsqueeze(0).float()
+        s2 = torch.from_numpy(saliency_pair).unsqueeze(0).float()
 
-        saliency = torch.from_numpy(saliency).unsqueeze(0).float()
-        saliency_pair = torch.from_numpy(saliency_pair).unsqueeze(0).float()
-
-        return (
-            (img1, img2),
-            (gaze, gaze_pair),
-            (saliency, saliency_pair)
-        ), -1 
+        return (img1, img2), {"gaze": (g1,g2), "sal": (s1,s2)}

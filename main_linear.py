@@ -42,7 +42,7 @@ from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.misc import make_contiguous
 
-from foveation.factory import setup_foveation
+from foveation.factory import setup_foveation, log_foveation_config
 
 try:
     from solo.data.dali_dataloader import ClassificationDALIDataModule
@@ -93,17 +93,12 @@ def main(cfg: DictConfig):
         )
 
         if foveation_cfg is not None:
-            fov_type = foveation_cfg.get("type", None)
-            params = foveation_cfg.get(fov_type, {})
-            print(
-                f"[LinearEval] Found foveation config: type={fov_type} | "
-                + ", ".join(f"{k}={v}" for k, v in params.items())
-            )
+            print(f"[LinearEval] Found foveation config.")
         else:
             print("[LinearEval] No foveation found in args.json")
-
     else:
         print("[LinearEval] No args.json found next to checkpoint")
+    log_foveation_config(foveation_cfg, context="linear_eval", gpu_augmentation=True)
     foveation = setup_foveation(foveation_cfg)
     
     state = torch.load(ckpt_path, map_location="cpu")["state_dict"]
@@ -154,7 +149,6 @@ def main(cfg: DictConfig):
         batch_size=cfg.optimizer.batch_size,
         num_workers=cfg.data.num_workers,
         auto_augment=cfg.auto_augment,
-        foveation_cfg=foveation_cfg,
     )
     print("LOADED DATA", cfg.data.dataset)
 

@@ -12,7 +12,7 @@ hydra:
   run:
     dir: .
 
-name: "cm-nosal-test"
+name: "gpu-blur-test"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -37,7 +37,7 @@ data:
   dataset_kwargs:
     time_window: 15
     foveation:
-      type: "cm"
+      type: "blur"
       crop:
         crop_size: 336
       blur:
@@ -49,7 +49,7 @@ data:
       cm:
         fov_ratio: 0.3125
         K_ratio: 0.208
-        saliency_beta: 1.0
+        saliency_beta: 0.5
 optimizer:
   name: "lars"
   batch_size: 256
@@ -89,5 +89,5 @@ precision: 16-mixed
 no_validation: True # important since we have no validation split
 limit_val_batches: 0
 num_sanity_val_steps: 0
-log_every_n_steps: 200 # increase for larger runs
+log_every_n_steps: 20 # increase for larger runs
 limit_train_batches: 0.02 # percentile or total batches (1.0 for full run)

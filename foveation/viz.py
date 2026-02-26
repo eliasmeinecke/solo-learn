@@ -44,7 +44,6 @@ def main():
     viz_fov(frame, annot, saliency, "cm") # methods: crop, blur, cm
     
     # needs changing after gpu-switch: (maybe pull gaze & saliency tensors to main?)
-    # benchmark_fov(frame, annot, saliency, "cm")
     # viz_relative_sigmas(frame, annot, saliency)
     # viz_blur_heatmaps(frame, annot, saliency)
     # viz_cm_overview(frame, annot, saliency)
@@ -113,35 +112,6 @@ def viz_fov(frame, annot, saliency, method):
     plt.close()
 
     print(f"Saved {file_name}")  
-    
-    
-def benchmark_fov(frame, annot, saliency, method, runs=100):
-    
-    if method == "crop":
-        foveation = GazeCenteredCrop()
-    elif method == "blur":
-        foveation = RadialBlurFoveation()
-    elif method == "cm":  # wip
-        foveation = CortalMagnification()
-    else:
-        print("No benchmarkable foveation given.")
-        return None
-
-    for _ in range(10):
-        _ = foveation(frame, annot, saliency)
-    
-    start = time.perf_counter()
-    
-    for _ in range(runs):
-        _ = foveation(frame, annot, saliency)
-    
-    end = time.perf_counter()
-    
-    avg_time = (end - start) / runs
-    
-    print(f"Using fov method: {method}")
-    print(f"Average fov time per image: {avg_time:.4f} seconds")
-    print(f"Images per second: {1/avg_time:.2f}")
     
     
 def viz_relative_sigmas(frame, annot, saliency):
@@ -375,7 +345,7 @@ def viz_saliency(frame, annot, saliency):
 def viz_eval_saliency(frame):
 
     # has to be changed completely
-    foveation_transform = GazePredictor(foveation=None, base_transform=lambda x: x)
+    foveation_transform = GazePredictor()
     
     annot = foveation_transform._build_center_annotation(frame)
     saliency = foveation_transform._build_center_saliency()

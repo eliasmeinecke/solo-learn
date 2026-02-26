@@ -33,7 +33,6 @@ from torchvision.datasets import ImageFolder
 from torchvision.transforms import InterpolationMode
 
 from solo.data.custom.imagenet import ImgNetDataset_42
-from foveation.factory import FoveationTransform, build_foveation
 from solo.data.custom.base import H5ClassificationDataset
 from solo.data.custom.core50 import Core50, Core50ForBGClassification
 
@@ -280,6 +279,27 @@ def prepare_transforms(dataset: str) -> Tuple[nn.Module, nn.Module]:
     return T_train, T_val
 
 
+def prepare_separated_transforms(dataset: str) -> Tuple[Callable, nn.Module, Callable, nn.Module]:
+    """Return **seperated** (pre-transform + GPU transform) pipelines for *dataset*.
+    Args:
+        dataset (str): dataset name.
+
+    Returns:
+        Tuple[
+            Callable,   # T_pre_train (CPU)
+            nn.Module,  # T_train_gpu
+            Callable,   # T_pre_val (CPU)
+            nn.Module,  # T_val_gpu
+        ]
+    """
+    pipeline = _get_pipeline(dataset)
+    T_pre_train: Callable = pipeline["T_Pre_Train"]
+    T_train_gpu: nn.Module = pipeline["T_train"]
+    T_pre_val: Callable = pipeline["T_Pre_Val"]
+    T_val_gpu: nn.Module = pipeline["T_val"]
+    return T_pre_train, T_train_gpu, T_pre_val, T_val_gpu
+
+
 def prepare_datasets(
         dataset: str,
         T_train: Callable,
@@ -289,7 +309,6 @@ def prepare_datasets(
         data_format: Optional[str] = "image_folder",
         download: bool = True,
         data_fraction: float = -1.0,
-        foveation_cfg: Optional[dict] = None
 ) -> Tuple[Dataset, Dataset]:
     """Prepare train and val datasets.
 
@@ -306,16 +325,10 @@ def prepare_datasets(
         data_format: ``"image_folder"`` or ``"h5"``. Defaults to ``"image_folder"``.
         download (bool): download the dataset if not present. Defaults to ``True``.
         data_fraction (float): fraction of training data to use (``-1`` = all).
-        foveation_cfg: optional foveation configuration dict.
 
     Returns:
         Tuple[Dataset, Dataset]: training dataset and validation dataset.
     """
-
-    if foveation_cfg is not None:
-        # TODO: Implement logic
-        pass
-
 
     if train_data_path is None:
         sandbox_folder = Path(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
@@ -518,7 +531,6 @@ def prepare_data(
         download: bool = True,
         data_fraction: float = -1.0,
         auto_augment: bool = False,
-        foveation_cfg: Optional[dict] = None,
 ) -> Tuple[DataLoader, DataLoader, nn.Module, nn.Module]:
     """Build dataloaders with split CPU/GPU transforms.
 
@@ -586,7 +598,6 @@ def prepare_data(
         data_format=data_format,
         download=download,
         data_fraction=data_fraction,
-        foveation_cfg=foveation_cfg,
     )
     train_loader, val_loader = prepare_dataloaders(
         train_dataset,

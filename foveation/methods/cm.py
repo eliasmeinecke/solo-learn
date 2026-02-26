@@ -9,6 +9,9 @@ class CortalMagnification(nn.Module):
         self.fov_ratio = fov_ratio
         self.K_ratio = K_ratio
         self.saliency_beta = saliency_beta
+        self.register_buffer("_grid_y", None, persistent=False)
+        self.register_buffer("_grid_x", None, persistent=False)
+        self._grid_size = None
 
     def forward(self, img, gaze, saliency):
         """
@@ -19,7 +22,6 @@ class CortalMagnification(nn.Module):
 
         device = img.device
         B, C, H, W = img.shape
-
         img = img.float()
         
         # ensure saliency matches image size & normalize
@@ -33,12 +35,18 @@ class CortalMagnification(nn.Module):
         saliency = saliency / (saliency.amax(dim=(2,3), keepdim=True) + 1e-6)
         saliency = saliency.squeeze(1)
 
-        # coordinate grid (batchfähig)
-        ys = torch.arange(H, device=device).view(1, H, 1)
-        xs = torch.arange(W, device=device).view(1, 1, W)
+        # create coordinate grid (GPU)
+        if self._grid_y is None or self._grid_size != (H, W):
 
-        ys = ys.expand(B, H, W)
-        xs = xs.expand(B, H, W)
+            ys = torch.arange(H, device=device, dtype=torch.float32).view(1, H, 1)
+            xs = torch.arange(W, device=device, dtype=torch.float32).view(1, 1, W)
+
+            self._grid_y = ys
+            self._grid_x = xs
+            self._grid_size = (H, W)
+
+        ys = self._grid_y.expand(B, H, W)
+        xs = self._grid_x.expand(B, H, W)
 
         x_g = gaze[:, 0].view(B, 1, 1)
         y_g = gaze[:, 1].view(B, 1, 1)

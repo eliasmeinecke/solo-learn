@@ -43,7 +43,7 @@ from solo.utils.checkpointer import Checkpointer
 from solo.utils.knn_callback import KNNCallback
 from solo.utils.misc import make_contiguous, omegaconf_select
 
-from foveation.factory import setup_foveation
+from foveation.factory import setup_foveation, log_foveation_config
 
 try:
     from solo.data.dali_dataloader import PretrainDALIDataModule, build_transform_pipeline_dali
@@ -101,7 +101,7 @@ def main(cfg: DictConfig):
             num_workers=cfg.data.num_workers,
         )
 
-    # foveation config
+    # build foveation
     foveation_cfg = cfg.data.dataset_kwargs.get("foveation", None)
     
     # pretrain dataloader
@@ -143,20 +143,27 @@ def main(cfg: DictConfig):
                     build_transform_pipeline(cfg.data.dataset, aug_cfg), aug_cfg.num_crops
                 )
             )
-        transform = FullTransformPipeline(pipelines)
+        full_transform = FullTransformPipeline(pipelines)
+        pre_transform = build_pre_transform(base_resize=cfg.data.gpu_pre_image_size)
 
+        # GPU Augmentation Handling
         if cfg.data.gpu_augmentation:
-            model.transform = transform # assign the transform to the model so that it can be used for gpu augmentation
-            model.foveation = setup_foveation(foveation_cfg)
-            transform = build_pre_transform(base_resize=cfg.data.gpu_pre_image_size)
-
-            if cfg.debug_augmentations:
-                print("GPU Batch-Transform:")
-                print(model.transform)
-
-        if cfg.debug_augmentations:
-            print("Transforms:")
-            print(transform)
+            foveation = setup_foveation(foveation_cfg)
+            model.transform = full_transform
+            model.foveation = foveation
+            transform = pre_transform
+            log_foveation_config(foveation_cfg, context="pretrain", gpu_augmentation=True)
+        else:
+            model.transform = None
+            model.foveation = None
+            
+            def cpu_transform(img1, img2):
+                img1, img2 = pre_transform(img1, img2)
+                return full_transform(img1, img2)
+    
+            transform = cpu_transform
+            
+            log_foveation_config(foveation_cfg, context="pretrain", gpu_augmentation=False)
 
         train_dataset = prepare_datasets(
             cfg.data.dataset,
@@ -192,7 +199,7 @@ def main(cfg: DictConfig):
     
     callbacks = []
     if cfg.knn_clb.enabled:
-        callbacks.append(KNNCallback(cfg.knn_clb, foveation_cfg=foveation_cfg))
+        callbacks.append(KNNCallback(cfg.knn_clb, foveation_cfg, cfg.data.gpu_augmentation))
 
     if cfg.checkpoint.enabled:
         ckpt = Checkpointer(

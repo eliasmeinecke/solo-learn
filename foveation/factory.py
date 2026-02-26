@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.distributed as dist
 
 from foveation.methods.radial_blur import RadialBlurFoveation
 from foveation.methods.cm import CortalMagnification
@@ -77,17 +78,82 @@ class GazePredictor(nn.Module):
     
     
 def setup_foveation(foveation_cfg):
-    
+
     if foveation_cfg is None:
         return None
 
     fov_type = foveation_cfg.get("type", None)
     params = foveation_cfg.get(fov_type, {})
+
     if fov_type == "blur":
-        foveation = RadialBlurFoveation(**params)
+        return RadialBlurFoveation(**params)
+
     elif fov_type == "cm":
-        foveation = CortalMagnification(**params)
+        return CortalMagnification(**params)
+
+    return None
+
+
+def log_foveation_config(foveation_cfg, context: str, gpu_augmentation: bool = True):
+    """
+    Logs foveation configuration and whether it is applied
+    in the given runtime context.
+
+    Args:
+        foveation_cfg: foveation configuration dict or None
+        context: "pretrain", "linear_eval", "knn"
+        gpu_augmentation: whether GPU augmentation is enabled
+    """
+
+    # Only print on rank 0
+    if dist.is_available() and dist.is_initialized() and dist.get_rank() != 0:
+        return
+
+    print("\n" + "=" * 60)
+
+    if foveation_cfg is None:
+        print(f"[FOVEATION] ({context}) Disabled")
+        print("=" * 60 + "\n")
+        return
+
+    fov_type = foveation_cfg.get("type", "none")
+    params = foveation_cfg.get(fov_type, {})
+
+    applied = False
+    location = ""
+
+    # CROP (CPU only, pretrain only)
+    if fov_type == "crop":
+        if context == "pretrain":
+            applied = True
+            location = "CPU (Dataset)"
+        else:
+            applied = False
+            location = "Not applied in this context"
+
+    # BLUR / CM (GPU only)
+    elif fov_type in ["blur", "cm"]:
+        if gpu_augmentation:
+            applied = True
+            location = "GPU"
+        else:
+            applied = False
+            location = "GPU augmentation disabled"
+
     else:
-        foveation = None
-        
-    return foveation
+        applied = False
+        location = "Unknown type"
+
+    print(f"[FOVEATION] ({context}) Configured: {fov_type.upper()}")
+
+    if applied:
+        print(f"Status: ACTIVE  → Applied on {location}")
+    else:
+        print(f"Status: INACTIVE → {location}")
+
+    if params:
+        print("Parameters:")
+        for k, v in params.items():
+            print(f"  - {k}: {v}")
+
+    print("=" * 60 + "\n")
