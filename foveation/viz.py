@@ -24,8 +24,8 @@ def main():
     ANNOT_PATH = "/home/data/elias/Ego4dDivSubset/annot.parquet"
     H5_PATH = "/home/data/elias/Ego4dDivSubset/ego4d_diverse_subset.h5"
 
-    # i = 99_002 # (for 2 saliency "blobs")
-    i = 100_003
+    i = 99_002 # (for 2 saliency "blobs")
+    # i = 100_003
 
     df = pd.read_parquet(ANNOT_PATH)
 
@@ -41,15 +41,14 @@ def main():
     saliency = saliency.astype(np.float32)
      
     # updated after gpu-switch:
-    # viz_fov(frame, annot, saliency, "cm") # methods: crop, blur, cm
-    viz_eval_saliency(frame)
+    viz_fov(frame, annot, saliency, "cm") # methods: crop, blur, cm
+    # viz_saliency(frame, annot, saliency)
+    # viz_eval_saliency(frame)
     
     # needs changing after gpu-switch: (maybe pull gaze & saliency tensors to main?)
     # viz_relative_sigmas(frame, annot, saliency)
     # viz_blur_heatmaps(frame, annot, saliency)
     # viz_cm_overview(frame, annot, saliency)
-    # viz_saliency(frame, annot, saliency)
-    
 
 
 def viz_fov(frame, annot, saliency, method):

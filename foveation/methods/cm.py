@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 class CortalMagnification(nn.Module):
-    def __init__(self, fov_ratio=0.3125, K_ratio=0.208, saliency_beta=0.5):
+    def __init__(self, fov_ratio=0.3125, K_ratio=0.208, saliency_beta=2.0):
         super().__init__()
         self.fov_ratio = fov_ratio
         self.K_ratio = K_ratio
@@ -32,7 +32,7 @@ class CortalMagnification(nn.Module):
                 mode="bilinear",
                 align_corners=False,
             )
-        saliency = saliency / (saliency.amax(dim=(2,3), keepdim=True) + 1e-6)
+        saliency = saliency / (saliency.sum(dim=(2,3), keepdim=True) + 1e-6)
         saliency = saliency.squeeze(1)
 
         # create coordinate grid (GPU)
@@ -63,6 +63,8 @@ class CortalMagnification(nn.Module):
         std_r = torch.sqrt(torch.clamp(var_r, min=0.0))
 
         spread_norm = std_r / r.amax(dim=(1, 2), keepdim=True)
+        
+        print("spread_norm:", spread_norm.mean().item())
 
         # parameters
         base_size = min(H, W)
