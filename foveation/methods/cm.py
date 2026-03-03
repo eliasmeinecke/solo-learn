@@ -63,8 +63,6 @@ class CortalMagnification(nn.Module):
         std_r = torch.sqrt(torch.clamp(var_r, min=0.0))
 
         spread_norm = std_r / r.amax(dim=(1, 2), keepdim=True)
-        
-        print("spread_norm:", spread_norm.mean().item())
 
         # parameters
         base_size = min(H, W)
