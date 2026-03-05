@@ -48,6 +48,8 @@ lightning_logs/
 
 *logs*/
 *output*/
+!foveation/analysis/outputs/
+!foveation/analysis/outputs/**
 
 .hydra
 

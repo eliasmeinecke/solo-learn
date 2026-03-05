@@ -1,0 +1,7 @@
+name,id,foveation,knn_top1_best,knn_top5_best,final_loss,knn_top1_k100,knn_top1_k10,knn_top1_k20,knn_top1_k50,knn_top5_k100,knn_top5_k10,knn_top5_k20,knn_top5_k50
+mocov3-ego4d-cm-nosal-gpu-aug,cbg5z9s8,cm (no sal),48.8,75.22,0.15325827896595,47.16,47.24,48.8,48.52,75.22,68.62,71.92,73.78
+mocov3-ego4d-blur-sal-gpu-aug,gxaz9s34,blur (sal),48.26,74.54,0.136212095618248,46.84,47.46,48.26,47.74,74.54,68.28,71.94,74.22
+mocov3-ego4d-base-gpu-aug,y9xhl4ce,baseline,48.1,74.4,0.13615909218788147,47.28,46.42,47.92,48.1,74.4,68.4,71.2,73.48
+mocov3-ego4d-cm-sal-gpu-aug,6ixoum4d,cm (sal),47.88,74.36,0.14890922605991364,46.76,46.86,47.34,47.88,74.36,68.12,70.98,73.88
+mocov3-ego4d-crop-gpu-aug,u2ja20do,crop,47.74,74.46,0.18187427520751953,46.38,46.74,47.74,47.74,74.46,69.08,72.1,73.76
+mocov3-ego4d-blur-nosal-gpu-aug,rhtkva61,blur (no sal),47.64,73.96,0.1376781463623047,46.48,46.26,47.64,47.52,73.96,67.16,70.1,73.08

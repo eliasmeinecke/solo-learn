@@ -1,0 +1,79 @@
+name_clean,id,dataset,category,foveation,linear_acc1_best
+cifar10_224_mocov3-ego4d-base-gpu-aug,zkkt6a3p,CIFAR-10,Easy category recognition,baseline,79.12000274658203
+cifar10_224_mocov3-ego4d-blur-nosal-gpu-aug,ibeqd80v,CIFAR-10,Easy category recognition,blur (no sal),83.30999755859375
+cifar10_224_mocov3-ego4d-blur-sal-gpu-aug,6m7h334k,CIFAR-10,Easy category recognition,blur (sal),83.50999450683594
+cifar10_224_mocov3-ego4d-cm-nosal-gpu-aug,y5wrcazb,CIFAR-10,Easy category recognition,cm (no sal),79.50999450683594
+cifar10_224_mocov3-ego4d-cm-sal-gpu-aug,sqg1r3nt,CIFAR-10,Easy category recognition,cm (sal),79.61000061035156
+cifar10_224_mocov3-ego4d-crop-gpu-aug,1sjb5vy2,CIFAR-10,Easy category recognition,crop,79.1199951171875
+DTD_mocov3-ego4d-base-gpu-aug,31gwtvao,DTD,Fine-grained recognition,baseline,54.946807861328125
+DTD_mocov3-ego4d-blur-nosal-gpu-aug,ylvsluai,DTD,Fine-grained recognition,blur (no sal),52.87234115600586
+DTD_mocov3-ego4d-blur-sal-gpu-aug,hghmyjnx,DTD,Fine-grained recognition,blur (sal),52.553192138671875
+DTD_mocov3-ego4d-cm-nosal-gpu-aug,izb2xj3j,DTD,Fine-grained recognition,cm (no sal),53.45744323730469
+DTD_mocov3-ego4d-cm-sal-gpu-aug,2ilvph7x,DTD,Fine-grained recognition,cm (sal),54.574466705322266
+DTD_mocov3-ego4d-crop-gpu-aug,66aif45t,DTD,Fine-grained recognition,crop,54.414894104003906
+FGVCAircraft_mocov3-ego4d-base-gpu-aug,4k0377tc,FGVCAircraft,Fine-grained recognition,baseline,29.646284103393555
+FGVCAircraft_mocov3-ego4d-blur-nosal-gpu-aug,84t8juuc,FGVCAircraft,Fine-grained recognition,blur (no sal),29.46642684936523
+FGVCAircraft_mocov3-ego4d-blur-sal-gpu-aug,li21uleq,FGVCAircraft,Fine-grained recognition,blur (sal),29.46642684936523
+FGVCAircraft_mocov3-ego4d-cm-nosal-gpu-aug,a8z2kzg3,FGVCAircraft,Fine-grained recognition,cm (no sal),32.94364547729492
+FGVCAircraft_mocov3-ego4d-cm-sal-gpu-aug,9wsfp4qi,FGVCAircraft,Fine-grained recognition,cm (sal),30.935253143310547
+FGVCAircraft_mocov3-ego4d-crop-gpu-aug,or05ehd7,FGVCAircraft,Fine-grained recognition,crop,30.6354923248291
+Flowers102_mocov3-ego4d-base-gpu-aug,cpj6r8pf,Flowers102,Fine-grained recognition,baseline,71.70025634765625
+Flowers102_mocov3-ego4d-blur-nosal-gpu-aug,7fqawbjn,Flowers102,Fine-grained recognition,blur (no sal),71.19635772705078
+Flowers102_mocov3-ego4d-blur-sal-gpu-aug,9cxntyxn,Flowers102,Fine-grained recognition,blur (sal),72.18790435791016
+Flowers102_mocov3-ego4d-cm-nosal-gpu-aug,t2y2yveg,Flowers102,Fine-grained recognition,cm (no sal),72.9518814086914
+Flowers102_mocov3-ego4d-cm-sal-gpu-aug,yvwgjpt1,Flowers102,Fine-grained recognition,cm (sal),70.26982879638672
+Flowers102_mocov3-ego4d-crop-gpu-aug,3edz8syn,Flowers102,Fine-grained recognition,crop,72.74057006835938
+OxfordIIITPet_mocov3-ego4d-base-gpu-aug,vxhpovg2,OxfordIIITPet,Fine-grained recognition,baseline,56.12744903564453
+OxfordIIITPet_mocov3-ego4d-blur-nosal-gpu-aug,wsvi30nn,OxfordIIITPet,Fine-grained recognition,blur (no sal),56.971675872802734
+OxfordIIITPet_mocov3-ego4d-blur-sal-gpu-aug,0m177yj4,OxfordIIITPet,Fine-grained recognition,blur (sal),57.271240234375
+OxfordIIITPet_mocov3-ego4d-cm-nosal-gpu-aug,xmmou6h4,OxfordIIITPet,Fine-grained recognition,cm (no sal),57.51633834838867
+OxfordIIITPet_mocov3-ego4d-cm-sal-gpu-aug,nf0wbgn3,OxfordIIITPet,Fine-grained recognition,cm (sal),57.13507461547851
+OxfordIIITPet_mocov3-ego4d-crop-gpu-aug,avcom6cn,OxfordIIITPet,Fine-grained recognition,crop,57.2984733581543
+StanfordCars_mocov3-ego4d-base-gpu-aug,jn3n9aup,StanfordCars,Fine-grained recognition,baseline,40.489803314208984
+StanfordCars_mocov3-ego4d-blur-nosal-gpu-aug,fcwyq0e7,StanfordCars,Fine-grained recognition,blur (no sal),40.912479400634766
+StanfordCars_mocov3-ego4d-blur-sal-gpu-aug,viqdg6p5,StanfordCars,Fine-grained recognition,blur (sal),39.40825271606445
+StanfordCars_mocov3-ego4d-cm-nosal-gpu-aug,15cd17m2,StanfordCars,Fine-grained recognition,cm (no sal),42.59075164794922
+StanfordCars_mocov3-ego4d-cm-sal-gpu-aug,mhoz2763,StanfordCars,Fine-grained recognition,cm (sal),42.27995681762695
+StanfordCars_mocov3-ego4d-crop-gpu-aug,j6ssibuc,StanfordCars,Fine-grained recognition,crop,42.4664306640625
+imagenet_42_mocov3-ego4d-base-gpu-aug,qhmtijgm,ImageNet-1k 100%,Hard category recognition,baseline,42.30400085449219
+imagenet_42_mocov3-ego4d-blur-nosal-gpu-aug,1pxjvyse,ImageNet-1k 100%,Hard category recognition,blur (no sal),40.74800109863281
+imagenet_42_mocov3-ego4d-blur-sal-gpu-aug,nefuuzy9,ImageNet-1k 100%,Hard category recognition,blur (sal),41.27799987792969
+imagenet_42_mocov3-ego4d-cm-nosal-gpu-aug,qh5dbobe,ImageNet-1k 100%,Hard category recognition,cm (no sal),42.78199768066406
+imagenet_42_mocov3-ego4d-cm-sal-gpu-aug,8ro6az6e,ImageNet-1k 100%,Hard category recognition,cm (sal),42.61799621582031
+imagenet_42_mocov3-ego4d-crop-gpu-aug,ms2erh4f,ImageNet-1k 100%,Hard category recognition,crop,43.823997497558594
+imagenet10pct_42_mocov3-ego4d-base-gpu-aug,go1zij4h,ImageNet-1k 10%,Hard category recognition,baseline,31.999998092651367
+imagenet10pct_42_mocov3-ego4d-blur-nosal-gpu-aug,rr6g5p0z,ImageNet-1k 10%,Hard category recognition,blur (no sal),30.760000228881836
+imagenet10pct_42_mocov3-ego4d-blur-sal-gpu-aug,wb80h2j7,ImageNet-1k 10%,Hard category recognition,blur (sal),31.29399871826172
+imagenet10pct_42_mocov3-ego4d-cm-nosal-gpu-aug,mbnwg4us,ImageNet-1k 10%,Hard category recognition,cm (no sal),32.552001953125
+imagenet10pct_42_mocov3-ego4d-cm-sal-gpu-aug,l4ua7x1o,ImageNet-1k 10%,Hard category recognition,cm (sal),32.32600021362305
+imagenet10pct_42_mocov3-ego4d-crop-gpu-aug,q7us2rcc,ImageNet-1k 10%,Hard category recognition,crop,33.683998107910156
+imagenet1pct_42_mocov3-ego4d-base-gpu-aug,o8nyl4tc,ImageNet-1k 1%,Hard category recognition,baseline,16.261999130249023
+imagenet1pct_42_mocov3-ego4d-blur-nosal-gpu-aug,xuns8q5h,ImageNet-1k 1%,Hard category recognition,blur (no sal),15.670000076293944
+imagenet1pct_42_mocov3-ego4d-blur-sal-gpu-aug,plfn42c3,ImageNet-1k 1%,Hard category recognition,blur (sal),15.867999076843262
+imagenet1pct_42_mocov3-ego4d-cm-nosal-gpu-aug,g83fvceg,ImageNet-1k 1%,Hard category recognition,cm (no sal),16.375999450683594
+imagenet1pct_42_mocov3-ego4d-cm-sal-gpu-aug,vdxjk15i,ImageNet-1k 1%,Hard category recognition,cm (sal),16.341999053955078
+imagenet1pct_42_mocov3-ego4d-crop-gpu-aug,l3yoc0q4,ImageNet-1k 1%,Hard category recognition,crop,17.13800048828125
+imagenet100_42_mocov3-ego4d-base-gpu-aug,dgn6xs4p,ImageNet-100,Hard category recognition,baseline,64.17999267578125
+imagenet100_42_mocov3-ego4d-blur-nosal-gpu-aug,se8v2dak,ImageNet-100,Hard category recognition,blur (no sal),62.03999710083008
+imagenet100_42_mocov3-ego4d-blur-sal-gpu-aug,znu7itsw,ImageNet-100,Hard category recognition,blur (sal),63.03999710083008
+imagenet100_42_mocov3-ego4d-cm-nosal-gpu-aug,8lkj974e,ImageNet-100,Hard category recognition,cm (no sal),64.03999328613281
+imagenet100_42_mocov3-ego4d-cm-sal-gpu-aug,hd2trsxx,ImageNet-100,Hard category recognition,cm (sal),64.72000122070312
+imagenet100_42_mocov3-ego4d-crop-gpu-aug,m8sng4wx,ImageNet-100,Hard category recognition,crop,65.76000213623047
+cifar100_224_mocov3-ego4d-base-gpu-aug,gt7mszfy,CIFAR-100,Hard category recognition,baseline,56.19999694824219
+cifar100_224_mocov3-ego4d-blur-nosal-gpu-aug,j3j1l7ck,CIFAR-100,Hard category recognition,blur (no sal),61.999996185302734
+cifar100_224_mocov3-ego4d-blur-sal-gpu-aug,0re63x2k,CIFAR-100,Hard category recognition,blur (sal),61.73999786376953
+cifar100_224_mocov3-ego4d-cm-nosal-gpu-aug,k1ghioix,CIFAR-100,Hard category recognition,cm (no sal),56.540000915527344
+cifar100_224_mocov3-ego4d-cm-sal-gpu-aug,qq0xijpo,CIFAR-100,Hard category recognition,cm (sal),56.11000061035156
+cifar100_224_mocov3-ego4d-crop-gpu-aug,mkm38deq,CIFAR-100,Hard category recognition,crop,57.05999755859375
+COIL100_mocov3-ego4d-base-gpu-aug,4nmcm21l,COIL100,Instance recognition,baseline,82.1549301147461
+COIL100_mocov3-ego4d-blur-nosal-gpu-aug,wc5cue7c,COIL100,Instance recognition,blur (no sal),78.23944091796875
+COIL100_mocov3-ego4d-blur-sal-gpu-aug,mxa7s2r5,COIL100,Instance recognition,blur (sal),78.71831512451172
+COIL100_mocov3-ego4d-cm-nosal-gpu-aug,3om1y0vg,COIL100,Instance recognition,cm (no sal),80.97183227539062
+COIL100_mocov3-ego4d-cm-sal-gpu-aug,ca8yn6ac,COIL100,Instance recognition,cm (sal),81.67605590820312
+COIL100_mocov3-ego4d-crop-gpu-aug,d6mpxw90,COIL100,Instance recognition,crop,82.19718933105469
+core50_mocov3-ego4d-base-gpu-aug,2lyl2em9,Core50,Instance recognition,baseline,22.507999420166016
+core50_mocov3-ego4d-blur-nosal-gpu-aug,ji33y3rd,Core50,Instance recognition,blur (no sal),18.59600067138672
+core50_mocov3-ego4d-blur-sal-gpu-aug,okw0omkk,Core50,Instance recognition,blur (sal),28.41796875
+core50_mocov3-ego4d-cm-nosal-gpu-aug,dmvw6ter,Core50,Instance recognition,cm (no sal),25.681331634521484
+core50_mocov3-ego4d-cm-sal-gpu-aug,32kst05s,Core50,Instance recognition,cm (sal),23.71066665649414
+core50_mocov3-ego4d-crop-gpu-aug,hxieawhw,Core50,Instance recognition,crop,29.296875
