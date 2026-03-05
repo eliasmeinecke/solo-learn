@@ -35,10 +35,15 @@ def collect_wandb(project_name="eliasmeinecke-uni-frankfurt/bachelorthesis", fil
     for run in tqdm(runs):
         df.append({
             **{k: v for k, v in run.summary.items() if isinstance(v, (int, str, float))},
-            **{'name': run.name, 'id': run.id},
+            **{
+                "name": run.name,
+                "id": run.id,
+                "created_at": run.created_at
+            },
             **flatten_dict(run.config)
         })
     return pd.DataFrame(df)
 
 
-df = collect_wandb(filters={'group': 'crop'})
+if __name__ == "__main__":
+    df = collect_wandb(filters={'group': 'final'})

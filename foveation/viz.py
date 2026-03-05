@@ -21,85 +21,90 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main():
 
-    ANNOT_PATH = "/home/data/elias/Ego4dDivSubset/annot.parquet"
-    H5_PATH = "/home/data/elias/Ego4dDivSubset/ego4d_diverse_subset.h5"
+    indices = [99_002, 100_003]
 
-    i = 99_002 # (for 2 saliency "blobs")
-    # i = 100_003
+    samples = []
 
-    df = pd.read_parquet(ANNOT_PATH)
+    for i in indices:
 
-    with h5py.File(H5_PATH, "r") as hf:
-        frame = hf.get("frames")[i]
-        saliency = hf.get("saliency")[i]
-        frame = Image.open(io.BytesIO(frame)).convert("RGB")
-        # convert from BGR to RGB
-        frame = np.array(frame)[:, :, ::-1]
-        frame = Image.fromarray(frame)
-    
-    annot = df.iloc[i]
-    saliency = saliency.astype(np.float32)
+        frame, annot, saliency = load_sample(i)
+
+        img_tensor, gaze_tensor, sal_tensor = prepare_tensors(
+            frame, annot, saliency
+        )
+
+        samples.append({
+            "frame": frame,
+            "img_tensor": img_tensor,
+            "gaze_tensor": gaze_tensor,
+            "sal_tensor": sal_tensor,
+            "annot": annot
+        })
      
-    # updated after gpu-switch:
-    viz_fov(frame, annot, saliency, "cm") # methods: crop, blur, cm
+    viz_fov(samples, method="blur")
+    
+    # needs changing after gpu-switch:
+    # viz_cm_overview(frame, annot, saliency)
+    
+    # clean up/repair later:
+    # viz_blur_heatmaps(frame, annot, saliency)
     # viz_saliency(frame, annot, saliency)
     # viz_eval_saliency(frame)
     
-    # needs changing after gpu-switch: (maybe pull gaze & saliency tensors to main?)
+    # update/create & test:
     # viz_relative_sigmas(frame, annot, saliency)
-    # viz_blur_heatmaps(frame, annot, saliency)
-    # viz_cm_overview(frame, annot, saliency)
+    # viz_relative_cm(frame, annot, saliency)
+    
 
 
-def viz_fov(frame, annot, saliency, method):
+def viz_fov(samples, method="cm"):
 
-    img_np = np.array(frame)
-    H, W, _ = img_np.shape
+    if method == "blur":
+        fov = RadialBlurFoveation().to(device)
+    elif method == "cm":
+        fov = CortalMagnification().to(device)
 
-    x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
+    n = len(samples)
 
-    if method == "crop":
-        out = GazeCenteredCrop()(frame, annot)
-    elif method in ["blur", "cm"]: # GPU Foveations
+    fig, axes = plt.subplots(n, 2, figsize=(8,4*n))
 
-        # ---- Image → Tensor ----
-        img_tensor = torch.from_numpy(img_np).permute(2, 0, 1)  # C,H,W
-        img_tensor = img_tensor.unsqueeze(0).to(device)  # B,C,H,W
-        img_tensor = img_tensor.to(torch.uint8)
+    for i, sample in enumerate(samples):
 
-        # ---- Saliency ----
-        S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
-        S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+        frame = sample["frame"]
+        img_tensor = sample["img_tensor"]
+        sal_tensor = sample["sal_tensor"]
+        gaze_tensor = sample["gaze_tensor"]
+        annot = sample["annot"]
 
-        sal_tensor = torch.from_numpy(S).unsqueeze(0).unsqueeze(0)
-        sal_tensor = sal_tensor.to(device).float()
-
-        gaze_tensor = torch.tensor([[x_g, y_g]], device=device).float()
-
-        if method == "blur":
-            fov = RadialBlurFoveation().to(device)
-        else:
-            fov = CortalMagnification().to(device)
         with torch.no_grad():
             out_tensor = fov(img_tensor, gaze_tensor, sal_tensor)
 
-        out_tensor = out_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
-        out = Image.fromarray(out_tensor.astype(np.uint8))
-    else:
-        out = frame
+        out = (
+            out_tensor.squeeze(0)
+            .permute(1,2,0)
+            .cpu()
+            .numpy()
+        )
 
-    plt.figure(figsize=(8, 4))
-    plt.subplot(1, 2, 1)
-    plt.title("Original")
-    plt.imshow(frame)
-    plt.scatter(x_g, y_g, c="red", s=20)
-    plt.axis("off")
+        axes[i,0].imshow(frame)
+        axes[i,0].scatter(
+            annot.gaze_loc_x,
+            annot.gaze_loc_y,
+            c="red",
+            s=20
+        )
+        axes[i,0].set_title("Original")
+        axes[i,0].axis("off")
 
-    plt.subplot(1, 2, 2)
-    plt.title("Foveation")
-    plt.imshow(out)
-    plt.scatter(x_g, y_g, c="red", s=20)
-    plt.axis("off")
+        axes[i,1].imshow(out)
+        axes[i,1].scatter(
+            annot.gaze_loc_x,
+            annot.gaze_loc_y,
+            c="red",
+            s=20
+        )
+        axes[i,1].set_title(method)
+        axes[i,1].axis("off")
 
     plt.tight_layout()
 
@@ -408,6 +413,58 @@ def viz_eval_saliency(frame):
 
     print(f"Saved {save_name}")
     
+
+def load_sample(i):
+    ANNOT_PATH = "/home/data/elias/Ego4dDivSubset/annot.parquet"
+    H5_PATH = "/home/data/elias/Ego4dDivSubset/ego4d_diverse_subset.h5"
+
+    df = pd.read_parquet(ANNOT_PATH)
+
+    with h5py.File(H5_PATH, "r") as hf:
+        frame = hf.get("frames")[i]
+        saliency = hf.get("saliency")[i]
+        frame = Image.open(io.BytesIO(frame)).convert("RGB")
+        # convert from BGR to RGB
+        frame = np.array(frame)[:, :, ::-1]
+        frame = Image.fromarray(frame)
+    
+    annot = df.iloc[i]
+    saliency = saliency.astype(np.float32)
+    
+    return frame, annot, saliency
+
+
+def prepare_tensors(frame, annot, saliency):
+
+    img_np = np.array(frame)
+    H, W, _ = img_np.shape
+
+    img_tensor = (
+        torch.from_numpy(img_np)
+        .permute(2,0,1)
+        .unsqueeze(0)
+        .to(device)
+        .to(torch.uint8)
+    )
+
+    gaze_tensor = torch.tensor(
+        [[annot.gaze_loc_x, annot.gaze_loc_y]],
+        device=device
+    ).float()
+    
+    S = cv2.resize(saliency, (W,H))
+    S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+
+    sal_tensor = (
+        torch.from_numpy(S)
+        .unsqueeze(0)
+        .unsqueeze(0)
+        .float()
+        .to(device)
+    )
+
+    return img_tensor, gaze_tensor, sal_tensor
+
 
 if __name__ == "__main__":
     main()
