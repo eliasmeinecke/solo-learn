@@ -13,9 +13,8 @@ import torch
 import torchvision.transforms.functional as TF
 
 from foveation.factory import GazePredictor
-from foveation.methods.gaze_crop import GazeCenteredCrop
 from foveation.methods.radial_blur import RadialBlurFoveation
-from foveation.methods.cm import CortalMagnification
+from foveation.methods.cm import CortalMagnification, radial_quadratic_batch
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -41,10 +40,10 @@ def main():
             "annot": annot
         })
      
-    viz_fov(samples, method="blur")
+    #viz_fov(samples, method="blur")
     
     # needs changing after gpu-switch:
-    # viz_cm_overview(frame, annot, saliency)
+    viz_cm_saliency_effect(samples)
     
     # clean up/repair later:
     # viz_blur_heatmaps(frame, annot, saliency)
@@ -268,56 +267,130 @@ def viz_blur_heatmaps(frame, annot, saliency):
     print(f"Saved {file_name}")   
 
 
-def viz_cm_overview(frame, annot, saliency):
+def viz_cm_saliency_effect(samples, betas=[0.0, 1.0, 3.0]):
+    
+    sample = samples[0]
+    frame = sample["frame"]
+    img_tensor = sample["img_tensor"]
+    sal_tensor = sample["sal_tensor"]
+    gaze_tensor = sample["gaze_tensor"]
+        
+    device = img_tensor.device
+    B, C, H, W = img_tensor.shape
 
-    img_np = np.array(frame)
-    H, W, _ = img_np.shape
+    x_g = gaze_tensor[0,0].item()
+    y_g = gaze_tensor[0,1].item()
 
-    x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
+    with torch.no_grad():
 
-    # --- normalize saliency ---
-    S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
-    S = S.astype(np.float32)
-    S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+        ys = torch.arange(H, device=device).view(1, H, 1).expand(1, H, W)
+        xs = torch.arange(W, device=device).view(1, 1, W).expand(1, H, W)
 
-    # --- CM instances ---
-    cm_no_sal = CortalMagnification(saliency_beta=0.0)
-    cm_sal = CortalMagnification(saliency_beta=1)
+        dx = xs - x_g
+        dy = ys - y_g
+        r = torch.sqrt(dx**2 + dy**2 + 1e-6)
 
-    out_no_sal = cm_no_sal(frame, annot, S)
-    out_sal = cm_sal(frame, annot, S)
+        sal_norm = sal_tensor / (
+            sal_tensor.sum(dim=(2,3), keepdim=True) + 1e-6
+        )
+        sal_norm = sal_norm.squeeze(1)
 
-    # --- plotting ---
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        mean_r = torch.sum(sal_norm * r, dim=(1,2), keepdim=True)
+        mean_r2 = torch.sum(sal_norm * r**2, dim=(1,2), keepdim=True)
+        std_r = torch.sqrt(torch.clamp(mean_r2 - mean_r**2, min=0.0))
+        spread_norm = std_r / r.amax(dim=(1,2), keepdim=True)
+        spread_value = spread_norm.item()
 
-    # Original
-    axes[0, 0].imshow(frame)
-    axes[0, 0].scatter(x_g, y_g, c="red", s=30)
-    axes[0, 0].set_title("Original Image + Gaze")
+    base_size = min(H, W)
+    fov_base = 0.3125 * base_size
+    K = 0.208 * base_size
 
-    # CM without saliency
-    axes[0, 1].imshow(out_no_sal)
-    axes[0, 1].scatter(x_g, y_g, c="red", s=30)
-    axes[0, 1].set_title("Cortical Magnification")
+    # -------------------------------------------------
+    # Plot Layout: 2 rows × 4 columns
+    # -------------------------------------------------
 
-    # Saliency
-    axes[1, 0].imshow(S, cmap="magma")
-    axes[1, 0].set_title("Saliency Map")
+    fig, axes = plt.subplots(2, 4, figsize=(18,9))
 
-    # CM with saliency
-    axes[1, 1].imshow(out_sal)
-    axes[1, 1].scatter(x_g, y_g, c="red", s=30)
-    axes[1, 1].set_title("CM + Saliency")
+    # -----------------------
+    # Row 1: Original + CM
+    # -----------------------
 
-    for ax in axes.flat:
-        ax.axis("off")
+    axes[0,0].imshow(frame)
+    axes[0,0].scatter(x_g, y_g, c="red", s=20)
+    axes[0,0].set_title("Original")
+    axes[0,0].axis("off")
+
+    # -----------------------
+    # Row 2: Saliency
+    # -----------------------
+
+    sal_np = sal_tensor.squeeze().cpu().numpy()
+    axes[1,0].imshow(sal_np, cmap="viridis")
+    axes[1,0].scatter(x_g, y_g, c="red", s=20)
+    axes[1,0].set_title(f"Saliency\nspread_norm={spread_value:.3f}")
+    axes[1,0].axis("off")
+
+    # -----------------------
+    # CM variants
+    # -----------------------
+
+    for col, beta in enumerate(betas):
+
+        cm = CortalMagnification(saliency_beta=beta).to(device)
+
+        with torch.no_grad():
+            out_tensor = cm(img_tensor, gaze_tensor, sal_tensor)
+
+        out_np = (
+            out_tensor.squeeze(0)
+            .permute(1,2,0)
+            .cpu()
+            .numpy()
+        )
+
+        fov_eff = fov_base * (1 + beta * spread_value)
+
+        # ---- CM Image ----
+        axes[0, col+1].imshow(out_np.astype(np.uint8))
+        axes[0, col+1].scatter(x_g, y_g, c="red", s=20)
+        axes[0, col+1].set_title(
+            f"CM β={beta}\nfov_eff={fov_eff:.1f}"
+        )
+        axes[0, col+1].axis("off")
+
+        # ---- Distortion Map ----
+        fov_eff_tensor = torch.tensor(
+            fov_base * (1 + beta * spread_value),
+            device=device
+        )
+
+        r_new = radial_quadratic_batch(
+            r,
+            fov_eff_tensor.view(1,1,1),
+            torch.tensor(K, device=device).view(1,1,1)
+        )
+
+        # ---- Magnification Map ----
+        eps = 1e-6
+        magnification = (r_new / (r + eps)).squeeze().cpu().numpy()
+
+        im = axes[1, col+1].imshow(
+            magnification,
+            cmap="magma",
+            vmin=0.5,
+            vmax=1.5
+        )
+
+        axes[1, col+1].scatter(x_g, y_g, c="white", s=20)
+        axes[1, col+1].set_title("Magnification (r_new / r)")
+        axes[1, col+1].axis("off")
 
     plt.tight_layout()
 
     # --- save ---
-    file_name = "ego4d_cm_overview.png"
+    file_name = "cm_saliency_effect.png"
     base_dir = Path(__file__).resolve().parent
-    out_path = base_dir / "plots" / "cm_overview" / file_name
+    out_path = base_dir / "plots" / "cm_saliency" / file_name
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     plt.savefig(out_path, dpi=200)
