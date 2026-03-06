@@ -5,7 +5,7 @@ import torchvision.transforms.functional as TF
 
 
 class RadialBlurFoveation(nn.Module):
-    def __init__(self, radii_frac=[0.3, 0.7], sigma_base_frac=0.006, sigma_growth=2.0, saliency_alpha=5.0, transition_frac=0.1):
+    def __init__(self, radii_frac=[0.3, 0.7], sigma_base_frac=0.006, sigma_growth=2.0, saliency_alpha=0.0, transition_frac=0.1):
         super().__init__()
         self.radii_frac = radii_frac
         self.sigma_base_frac = sigma_base_frac

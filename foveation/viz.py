@@ -39,11 +39,11 @@ def main():
             "sal_tensor": sal_tensor,
             "annot": annot
         })
-     
-    #viz_fov(samples, method="blur")
+    
+    viz_fov(samples, method="blur")
     
     # needs changing after gpu-switch:
-    viz_cm_saliency_effect(samples)
+    # viz_cm_saliency_effect(samples)
     
     # clean up/repair later:
     # viz_blur_heatmaps(frame, annot, saliency)

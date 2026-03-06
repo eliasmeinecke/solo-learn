@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 class CortalMagnification(nn.Module):
-    def __init__(self, fov_ratio=0.3125, K_ratio=0.208, saliency_beta=2.0):
+    def __init__(self, fov_ratio=0.3125, K_ratio=0.208, saliency_beta=0.0):
         super().__init__()
         self.fov_ratio = fov_ratio
         self.K_ratio = K_ratio
