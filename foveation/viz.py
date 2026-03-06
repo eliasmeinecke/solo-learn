@@ -369,21 +369,26 @@ def viz_cm_saliency_effect(samples, betas=[0.0, 1.0, 3.0]):
             fov_eff_tensor.view(1,1,1),
             torch.tensor(K, device=device).view(1,1,1)
         )
-
-        # ---- Magnification Map ----
+        
+    
         eps = 1e-6
         magnification = (r_new / (r + eps)).squeeze().cpu().numpy()
 
+        # robuste Kontrast-Skalierung
+        vmin = np.percentile(magnification, 2)
+        vmax = np.percentile(magnification, 98)
+
         im = axes[1, col+1].imshow(
             magnification,
-            cmap="magma",
-            vmin=0.5,
-            vmax=1.5
+            cmap="RdBu_r",
+            vmin=vmin,
+            vmax=vmax
         )
 
         axes[1, col+1].scatter(x_g, y_g, c="white", s=20)
         axes[1, col+1].set_title("Magnification (r_new / r)")
         axes[1, col+1].axis("off")
+
 
     plt.tight_layout()
 
