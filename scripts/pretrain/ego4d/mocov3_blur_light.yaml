@@ -49,7 +49,7 @@ data:
       cm:
         fov_ratio: 0.3125
         K_ratio: 0.208
-        saliency_beta: 1.0
+        saliency_beta: 0.0
 optimizer:
   name: "lars"
   batch_size: 128
