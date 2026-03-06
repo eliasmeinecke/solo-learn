@@ -24,16 +24,17 @@ class CortalMagnification(nn.Module):
         B, C, H, W = img.shape
         img = img.float()
         
-        # ensure saliency matches image size & normalize
-        if saliency.shape[-2:] != (H, W):
-            saliency = F.interpolate(
-                saliency,
-                size=(H, W),
-                mode="bilinear",
-                align_corners=False,
-            )
-        saliency = saliency / (saliency.sum(dim=(2,3), keepdim=True) + 1e-6)
-        saliency = saliency.squeeze(1)
+        if self.saliency_beta != 0:
+            # ensure saliency matches image size & normalize
+            if saliency.shape[-2:] != (H, W):
+                saliency = F.interpolate(
+                    saliency,
+                    size=(H, W),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+            saliency = saliency / (saliency.sum(dim=(2,3), keepdim=True) + 1e-6)
+            saliency = saliency.squeeze(1)
 
         # create coordinate grid (GPU)
         if self._grid_y is None or self._grid_size != (H, W):
@@ -56,24 +57,26 @@ class CortalMagnification(nn.Module):
 
         r = torch.sqrt(dx**2 + dy**2 + 1e-6)
 
-        mean_r = torch.sum(saliency * r, dim=(1, 2), keepdim=True)
-        mean_r2 = torch.sum(saliency * r**2, dim=(1, 2), keepdim=True)
+        if self.saliency_beta != 0:
+            mean_r = torch.sum(saliency * r, dim=(1, 2), keepdim=True)
+            mean_r2 = torch.sum(saliency * r**2, dim=(1, 2), keepdim=True)
 
-        var_r = mean_r2 - mean_r**2
-        std_r = torch.sqrt(torch.clamp(var_r, min=0.0))
+            var_r = mean_r2 - mean_r**2
+            std_r = torch.sqrt(torch.clamp(var_r, min=0.0))
 
-        spread_norm = std_r / r.amax(dim=(1, 2), keepdim=True)
+            spread_norm = std_r / r.amax(dim=(1, 2), keepdim=True)
 
         # parameters
         base_size = min(H, W)
 
         fov = self.fov_ratio * base_size
         K = self.K_ratio * base_size
-
-        fov_eff = fov * (1.0 + self.saliency_beta * spread_norm)
+        
+        if self.saliency_beta != 0:
+            fov = fov * (1.0 + self.saliency_beta * spread_norm)
 
         # radial transform
-        r_new = radial_quadratic_batch(r, fov_eff, K)
+        r_new = radial_quadratic_batch(r, fov, K)
 
         dx_norm = dx / (r + 1e-6)
         dy_norm = dy / (r + 1e-6)

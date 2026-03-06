@@ -27,16 +27,17 @@ class RadialBlurFoveation(nn.Module):
         B, C, H, W = img.shape
         img = img.float()
         
-        # ensure saliency matches image size & normalize
-        if saliency.shape[-2:] != (H, W):
-            saliency = F.interpolate(
-                saliency,
-                size=(H, W),
-                mode="bilinear",
-                align_corners=False,
-            )
-        saliency = saliency / (saliency.amax(dim=(2,3), keepdim=True) + 1e-6)
-        saliency = saliency.squeeze(1)
+        if self.saliency_alpha != 0:
+            # ensure saliency matches image size & normalize
+            if saliency.shape[-2:] != (H, W):
+                saliency = F.interpolate(
+                    saliency,
+                    size=(H, W),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+            saliency = saliency / (saliency.amax(dim=(2,3), keepdim=True) + 1e-6)
+            saliency = saliency.squeeze(1)
         
         if self._grid_y is None or self._grid_size != (H, W):
 
@@ -57,7 +58,8 @@ class RadialBlurFoveation(nn.Module):
         R = torch.sqrt((xs - x_g) ** 2 + (ys - y_g) ** 2)
 
         R_max = R.amax(dim=(1, 2), keepdim=True)
-        R_eff = R / (1.0 + self.saliency_alpha * saliency)
+        if self.saliency_alpha != 0:
+            R = R / (1.0 + self.saliency_alpha * saliency)
 
         # radii & sigmas
         radii = [f * R_max for f in self.radii_frac]
@@ -93,7 +95,7 @@ class RadialBlurFoveation(nn.Module):
         # soft weights
         weights = []
         for c in ring_centers:
-            w = torch.exp(-0.5 * ((R_eff - c) / transition_width) ** 2)
+            w = torch.exp(-0.5 * ((R - c) / transition_width) ** 2)
             weights.append(w)
 
         weights = torch.stack(weights, dim=0)
