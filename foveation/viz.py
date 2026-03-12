@@ -1,16 +1,22 @@
 
 import io
-import time
 import numpy as np
 import pandas as pd
+import random
 import h5py
 import cv2
+import json
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 from PIL import Image
 from pathlib import Path
 from types import SimpleNamespace
 import torch
 import torchvision.transforms.functional as TF
+from pycocotools import mask as mask_util
+
+from torchvision.datasets import ImageFolder
+from solo.data.classification_dataloader import prepare_datasets
 
 from foveation.factory import GazePredictor
 from foveation.methods.radial_blur import RadialBlurFoveation
@@ -40,7 +46,8 @@ def main():
             "annot": annot
         })
     
-    viz_fov(samples, method="blur")
+    # viz_fov(samples, method="blur")
+    # viz_imagenet_mask_samples(5)
     
     # needs changing after gpu-switch:
     # viz_cm_saliency_effect(samples)
@@ -491,6 +498,108 @@ def viz_eval_saliency(frame):
 
     print(f"Saved {save_name}")
     
+    
+def viz_imagenet_mask_samples(n):
+    
+    val_ds = ImageFolder("/home/data/ILSVRC_real/val", transform=None)
+
+    json_path = "/home/data/elias/imagenet_sam_masks/imagenet_val_masks_with_center.json"
+        
+    with open(json_path, "r") as f:
+        json_data = json.load(f)
+        
+    json_by_filename = {
+        v["filename"]: v
+        for v in json_data.values()
+    }
+
+    total = len(val_ds)
+    indices = random.sample(range(total), n)
+    
+    for i in indices:
+
+        path = val_ds.samples[i][0]
+        filename = Path(path).name
+
+        if filename not in json_by_filename:
+            print(f"WARNING: {filename} not found in JSON")
+            continue
+
+        img = val_ds[i][0]
+        W_img, H_img = img.size
+        dp = json_by_filename[filename]
+        
+        mask = mask_util.decode(dp["rle"])
+        H_mask, W_mask = mask.shape
+        mask_resized = cv2.resize(
+            mask.astype(np.uint8),
+            (W_img, H_img),
+            interpolation=cv2.INTER_NEAREST
+        )
+        
+        # --- Centroids ---
+        cx_rel = dp["centroid"]["x_rel"]
+        cy_rel = dp["centroid"]["y_rel"]
+
+        cx_abs = cx_rel * W_img
+        cy_abs = cy_rel * H_img
+
+        # --- Bounding box ---
+        x1, y1, x2, y2 = dp["bbox"]
+        
+        scale_x = W_img / W_mask
+        scale_y = H_img / H_mask
+        
+        x1 *= scale_x
+        x2 *= scale_x
+        y1 *= scale_y
+        y2 *= scale_y
+
+        # --- Areas ---
+        area_mask_rel = dp.get("area_mask_rel", None)
+        area_bbox_rel = dp.get("area_bbox_rel", None)
+
+        # --- Plot ---
+        fig, ax = plt.subplots(figsize=(6,6))
+
+        ax.imshow(img)
+        ax.imshow(mask_resized, alpha=0.4)
+
+        # Bounding box
+        rect = patches.Rectangle(
+            (x1, y1),
+            x2 - x1,
+            y2 - y1,
+            linewidth=2,
+            edgecolor="yellow",
+            facecolor="none"
+        )
+        ax.add_patch(rect)
+
+        # Floodfill centroid (from JSON)
+        ax.scatter(cx_abs, cy_abs, c="blue", s=40, label="Centroid")
+
+        title = f"Index {i}\n"
+        if area_mask_rel is not None:
+            title += f"Mask area: {area_mask_rel:.3f} | "
+        if area_bbox_rel is not None:
+            title += f"BBox area: {area_bbox_rel:.3f}"
+
+        ax.set_title(title)
+        ax.axis("off")
+        ax.legend(loc="lower left")
+
+        plt.tight_layout()
+        
+        save_name=f"mask_json_debug{i}.png"
+        base_dir = Path(__file__).resolve().parent
+        out_path = base_dir / "plots" / "mask_json" / save_name
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(out_path, dpi=200)
+        plt.close()
+        print(f"Saved {save_name}")
+
 
 def load_sample(i):
     ANNOT_PATH = "/home/data/elias/Ego4dDivSubset/annot.parquet"
