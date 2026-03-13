@@ -98,8 +98,14 @@ def main(cfg: DictConfig):
             print("[LinearEval] No foveation found in args.json")
     else:
         print("[LinearEval] No args.json found next to checkpoint")
-    log_foveation_config(foveation_cfg, context="linear_eval", gpu_augmentation=True)
-    foveation = setup_foveation(foveation_cfg)
+    
+    if cfg.data.dataset in ["gaze_imagenet", "gaze_imagenet100", "gaze_imagenet_42", "gaze_imagenet100_42"]:
+        gaze_imagenet = True
+    else:
+        gaze_imagenet = False
+        
+    foveation = setup_foveation(foveation_cfg, gaze_imagenet=gaze_imagenet)        
+    log_foveation_config(foveation_cfg, context="linear_eval", gpu_augmentation=True, gaze_imagenet=gaze_imagenet)    
     
     state = torch.load(ckpt_path, map_location="cpu")["state_dict"]
     for k in list(state.keys()):

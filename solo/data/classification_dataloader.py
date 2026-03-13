@@ -35,6 +35,7 @@ from torchvision.transforms import InterpolationMode
 from solo.data.custom.imagenet import ImgNetDataset_42
 from solo.data.custom.base import H5ClassificationDataset
 from solo.data.custom.core50 import Core50, Core50ForBGClassification
+from solo.data.custom.gaze_imagenet import ImgNetWithGaze, ImgNetWithGaze42
 
 try:
     from solo.data.h5_dataset import H5Dataset
@@ -190,6 +191,30 @@ def _get_pipeline(dataset: str) -> dict:
             v2.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
         ]),
     }
+    
+    # --------------------------------------------------------------- ImageNet with Gaze-Centroids
+    gaze_imagenet_pipeline = {
+        "T_Pre_Train": v2.Compose([
+            v2.Resize((224,224), interpolation=InterpolationMode.BICUBIC, antialias=True),
+            v2.ToImage()
+            ]),
+        "T_train": v2.Compose([
+            v2.RandomResizedCrop(size=224, scale=(0.08, 1.0), interpolation=InterpolationMode.BICUBIC, antialias=True,),
+            v2.RandomHorizontalFlip(),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
+        ]),
+        "T_Pre_Val": v2.Compose([
+            v2.Resize((224,224), interpolation=InterpolationMode.BICUBIC, antialias=True),
+            v2.ToImage()
+        ]),
+        "T_val": v2.Compose([
+            v2.Resize(size=256, interpolation=InterpolationMode.BICUBIC, antialias=True),
+            v2.CenterCrop(size=224),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
+        ]),
+    }
 
     # ---------------------------------------------------------------- Toybox
     # Larger crop scale (0.6) because objects already fill most of the frame.
@@ -237,6 +262,10 @@ def _get_pipeline(dataset: str) -> dict:
         "imagenet100_42": imagenet_pipeline,
         "imagenet1pct_42": imagenet_pipeline,
         "imagenet10pct_42": imagenet_pipeline,
+        "gaze_imagenet": gaze_imagenet_pipeline,
+        "gaze_imagenet100": gaze_imagenet_pipeline,
+        "gaze_imagenet_42": gaze_imagenet_pipeline,
+        "gaze_imagenet100_42": gaze_imagenet_pipeline,
         "custom": custom_pipeline,
         "core50": imagenet_pipeline,
         "DTD": imagenet_pipeline,
@@ -300,6 +329,35 @@ def prepare_separated_transforms(dataset: str) -> Tuple[Callable, nn.Module, Cal
     return T_pre_train, T_train_gpu, T_pre_val, T_val_gpu
 
 
+def split_spatial_and_batch_transforms(compose):
+    """
+    Split a torchvision v2.Compose into
+    - spatial transforms (must run per-image)
+    - batch transforms (can run on stacked batch)
+    """
+
+    spatial_types = (
+        v2.RandomResizedCrop,
+        v2.Resize,
+        v2.CenterCrop,
+    )
+
+    spatial = []
+    batch = []
+
+    for t in compose.transforms:
+
+        if isinstance(t, spatial_types):
+            spatial.append(t)
+        else:
+            batch.append(t)
+
+    spatial = v2.Compose(spatial) if len(spatial) > 0 else None
+    batch = v2.Compose(batch) if len(batch) > 0 else None
+
+    return spatial, batch
+
+
 def prepare_datasets(
         dataset: str,
         T_train: Callable,
@@ -340,6 +398,7 @@ def prepare_datasets(
 
     assert dataset in [
         "cifar10", "cifar100", "stl10", "imagenet", "imagenet100", "custom",
+        "gaze_imagenet", "gaze_imagenet100",
         "imagenet100_42", "imagenet1pct_42", "imagenet10pct_42", "imagenet_42",
         "core50", "DTD", "Flowers102", "FGVCAircraft", "Food101", "OxfordIIITPet",
         "Places365", "StanfordCars", "STL10", "STL10_224", "Places365_h5",
@@ -425,6 +484,17 @@ def prepare_datasets(
         else:
             train_dataset = ImageFolder(train_data_path, T_train)
             val_dataset = ImageFolder(val_data_path, T_val)
+            
+    elif dataset in ["gaze_imagenet", "gaze_imagenet100"]:
+        # expects imagefolder format
+        train_dataset = ImgNetWithGaze(train_data_path, T_train, split="train")
+        val_dataset = ImgNetWithGaze(val_data_path, T_val, split="val")
+        
+    elif dataset in ["gaze_imagenet_42", "gaze_imagenet100_42"]:
+        # doesn't work at all yet! add subset-logic!
+        subset = "imgnet100" if dataset == "gaze_imagenet100_42" else None
+        train_dataset = ImgNetWithGaze42(train_data_path, T_train, split="train", subset=subset)
+        val_dataset = ImgNetWithGaze42(val_data_path, T_val, split="val", subset=subset)
 
     elif dataset in ["imagenet_42", "imagenet100_42", "imagenet1pct_42", "imagenet10pct_42"]:
         if dataset == "imagenet100_42":

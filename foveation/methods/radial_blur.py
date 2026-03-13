@@ -27,7 +27,7 @@ class RadialBlurFoveation(nn.Module):
         B, C, H, W = img.shape
         img = img.float()
         
-        if self.saliency_alpha != 0:
+        if (self.saliency_alpha != 0) and (saliency is not None):
             # ensure saliency matches image size & normalize
             if saliency.shape[-2:] != (H, W):
                 saliency = F.interpolate(
@@ -58,7 +58,7 @@ class RadialBlurFoveation(nn.Module):
         R = torch.sqrt((xs - x_g) ** 2 + (ys - y_g) ** 2)
 
         R_max = R.amax(dim=(1, 2), keepdim=True)
-        if self.saliency_alpha != 0:
+        if (self.saliency_alpha != 0) and (saliency is not None):
             R = R / (1.0 + self.saliency_alpha * saliency)
 
         # radii & sigmas

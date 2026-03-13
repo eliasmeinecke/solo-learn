@@ -4,8 +4,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
 
+from foveation.methods.gaze_crop import GazeCenteredCropGPU
 from foveation.methods.radial_blur import RadialBlurFoveation
-from foveation.methods.cm import CortalMagnification
+from foveation.methods.cm import CorticalMagnification
 
 class GazePredictor(nn.Module):
     """
@@ -77,7 +78,7 @@ class GazePredictor(nn.Module):
         return gaze, sal
     
     
-def setup_foveation(foveation_cfg):
+def setup_foveation(foveation_cfg, gaze_imagenet=False):
 
     if foveation_cfg is None:
         return None
@@ -85,16 +86,23 @@ def setup_foveation(foveation_cfg):
     fov_type = foveation_cfg.get("type", None)
     params = foveation_cfg.get(fov_type, {})
 
-    if fov_type == "blur":
-        return RadialBlurFoveation(**params)
+    if gaze_imagenet:
+        if fov_type == "crop":
+            return GazeCenteredCropGPU(**params)
+        elif fov_type == "blur":
+            return RadialBlurFoveation(**params)   
+        elif fov_type == "cm":
+            return CorticalMagnification(**params)
+    else:
+        if fov_type == "blur":
+            return RadialBlurFoveation(**params)
 
-    elif fov_type == "cm":
-        return CortalMagnification(**params)
-
+        elif fov_type == "cm":
+            return CorticalMagnification(**params)
     return None
 
 
-def log_foveation_config(foveation_cfg, context: str, gpu_augmentation: bool = True):
+def log_foveation_config(foveation_cfg, context: str, gpu_augmentation: bool = True, gaze_imagenet: bool = False):
     """
     Logs foveation configuration and whether it is applied
     in the given runtime context.
@@ -127,6 +135,9 @@ def log_foveation_config(foveation_cfg, context: str, gpu_augmentation: bool = T
         if context == "pretrain":
             applied = True
             location = "CPU (Dataset)"
+        elif context == "linear_eval" and gaze_imagenet == True:
+            applied = True
+            location = "GPU (Dataset)"
         else:
             applied = False
             location = "Not applied in this context"

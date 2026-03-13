@@ -56,6 +56,8 @@ _SUPPORTED_DATASETS = [
     "cifar100_224",
     "imagenet",
     "imagenet100",
+    "gaze_imagenet",
+    "gaze_imagenet100",
     "imagenet2",
     "imagenet2_100",
     "imagenet_42",
