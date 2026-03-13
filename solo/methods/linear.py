@@ -362,7 +362,8 @@ class LinearModel(pl.LightningModule):
                 print("Spatial:", spatial)
                 print("Batch:", batch_tf)
                 self._tf_debug_printed = True
-        """
+        
+        # foveation without padding removal (runs on 2 GPUs)
         if self.foveation is not None:
 
             if meta is not None:
@@ -390,7 +391,7 @@ class LinearModel(pl.LightningModule):
             
         return images, targets
         """
-        # foveation + padding removal
+        # foveation + padding removal (runs only on 1 gpu)
         if self.foveation is not None:
             if (not self._foveation_debug_printed and (not dist.is_available() or not dist.is_initialized() or dist.get_rank() == 0)):
                     print("\n[FOVEATION DEBUG] Linear Eval foveation is ACTIVE on GPU\n")
@@ -429,7 +430,7 @@ class LinearModel(pl.LightningModule):
             # images = torch.stack([batch_tf(images[i]) for i in range(images.shape[0])])
             
         return images, targets
-        
+    """
 
 
     def forward_backbone(self, X: torch.Tensor) -> torch.Tensor:

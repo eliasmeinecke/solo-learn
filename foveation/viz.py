@@ -50,7 +50,7 @@ def main():
     
     # viz_fov(samples, method="blur")
     # viz_imagenet_mask_samples(4)
-    # viz_imagenet_fov_samples(3)
+    viz_imagenet_fov_samples(3, remove_padding=False)
     
     # needs changing after gpu-switch:
     # viz_cm_saliency_effect(samples)
@@ -532,7 +532,7 @@ def remove_padding(img_tensor, ratio):
     return img_tensor[:, :, :valid_H, :valid_W]
 
     
-def viz_imagenet_fov_samples(n):
+def viz_imagenet_fov_samples(n, remove_padding):
 
     crop_fov = GazeCenteredCropGPU()
     blur_fov = RadialBlurFoveation()
@@ -572,9 +572,13 @@ def viz_imagenet_fov_samples(n):
 
         ratio = torch.tensor([w_ratio, h_ratio])
 
-        img_tensor = remove_padding(img_tensor, ratio)
-        
-        _, _, H_img, W_img = img_tensor.shape
+        if remove_padding:
+            img_tensor = remove_padding(img_tensor, ratio)
+            _, _, H_img, W_img = img_tensor.shape            
+        else:
+            _, _, H_img, W_img = img_tensor.shape
+            H_img = int(ratio[0] * H_img)
+            W_img = int(ratio[0] * W_img)
 
         cx_rel = dp["centroid"]["x_rel"]
         cy_rel = dp["centroid"]["y_rel"]
@@ -583,8 +587,6 @@ def viz_imagenet_fov_samples(n):
         cy_abs = cy_rel * H_img
 
         gaze = torch.tensor([[cx_abs, cy_abs]], dtype=torch.float32)
-
-        img_tensor = pil_to_tensor(img).unsqueeze(0)  # (1,C,H,W)
 
         with torch.no_grad():
 
