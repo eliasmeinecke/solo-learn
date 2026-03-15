@@ -1,0 +1,53 @@
+defaults:
+  - _self_
+  - wandb: testing.yaml
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# disable hydra outputs
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+name: "gaze-imagenet-blur-test-1gpu"
+pretrained_feature_extractor: "/home/data/elias/trained_models/mocov3/zaraixh1/gpu-blur-test-zaraixh1-ep=last.ckpt"
+backbone:
+  name: "resnet50"
+pretrain_method: "mocov3"
+data:
+  dataset: gaze_imagenet100
+  train_path: "/home/data/elias/imagenet100/train"
+  val_path: "/home/data/elias/imagenet100/val"
+  format: "image_folder"
+  num_workers: 4
+optimizer:
+  name: "sgd"
+  batch_size: 256
+  lr: 0.3
+  weight_decay: 0
+scheduler:
+  name: "step"
+  lr_decay_steps: [60, 80]
+early_stopping:
+  enabled: False
+checkpoint:
+  enabled: False
+  dir: "trained_models"
+  frequency: 1
+auto_resume:
+  enabled: True
+
+# creates a linear classifier on top of frozen features for every learning rate in the grid
+grid:
+  enabled: True
+  lr: [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 3.0]
+
+# overwrite PL stuff
+max_epochs: 5
+devices: 1
+sync_batchnorm: True
+accelerator: "gpu"
+strategy: "ddp"
+precision: 32
+log_every_n_steps: 50

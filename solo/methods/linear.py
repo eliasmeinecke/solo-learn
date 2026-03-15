@@ -345,14 +345,13 @@ class LinearModel(pl.LightningModule):
 
     def on_after_batch_transfer(self, batch, dataloader_idx):
         """Apply GPU-side augmentation / normalisation after the batch is on device."""
-
+        
+        # unpack batch
         if len(batch) == 3:
             images, targets, meta = batch
         else:
             images, targets = batch
             meta = None
-
-        B, C, H, W = images.shape
 
         spatial = self.T_train_spatial if self.training else self.T_val_spatial
         batch_tf = self.T_train_batch if self.training else self.T_val_batch
@@ -362,75 +361,70 @@ class LinearModel(pl.LightningModule):
                 print("Spatial:", spatial)
                 print("Batch:", batch_tf)
                 self._tf_debug_printed = True
-        
-        # foveation without padding removal (runs on 2 GPUs)
-        if self.foveation is not None:
 
-            if meta is not None:
-
-                valid_W = (meta["ratio"][:,0] * W).long()
-                valid_H = (meta["ratio"][:,1] * H).long()
-
-                gaze_abs = torch.stack([
-                    meta["gaze"][:,0] * valid_W,
-                    meta["gaze"][:,1] * valid_H
-                ], dim=1)
-
-                saliency = None
-
-            else:
-                gaze_abs, saliency = self.gaze_predictor(images)
-
-            images = self.foveation(images, gaze_abs, saliency)
-
-        if spatial is not None:
-            images = torch.stack([spatial(img) for img in images])
-
-        if batch_tf is not None:
-            images = batch_tf(images)
+        # =====================================================
+        # CASE 1 — NORMAL DATASETS (fast batch pipeline)
+        # =====================================================
+        if meta is None:
             
-        return images, targets
-        """
-        # foveation + padding removal (runs only on 1 gpu)
-        if self.foveation is not None:
-            if (not self._foveation_debug_printed and (not dist.is_available() or not dist.is_initialized() or dist.get_rank() == 0)):
+            if self.foveation is not None:
+                if (not self._foveation_debug_printed and (not dist.is_available() or not dist.is_initialized() or dist.get_rank() == 0)):
                     print("\n[FOVEATION DEBUG] Linear Eval foveation is ACTIVE on GPU\n")
                     self._foveation_debug_printed = True
-            
-            outputs = []
-            for i in range(B):
-                img = images[i:i+1]
-                if meta is not None:
-                    ratio = meta["ratio"][i].to(images.device)
-                    gaze_rel = meta["gaze"][i].to(images.device)
+                gaze, saliency = self.gaze_predictor(images)
+                images = self.foveation(images, gaze, saliency)
 
-                    valid_W = int((ratio[0] * W).item())
-                    valid_H = int((ratio[1] * H).item())
+            if spatial is not None:
+                images = torch.stack([spatial(images[i]) for i in range(images.shape[0])])
 
-                    img = img[:, :, :valid_H, :valid_W]
+            if batch_tf is not None:
+                images = batch_tf(images)
 
-                    gaze_abs = torch.stack([
-                        gaze_rel[0] * valid_W,
-                        gaze_rel[1] * valid_H
-                    ]).view(1,2)
-                    saliency = None
-                else:
-                    gaze_abs, saliency = self.gaze_predictor(img)
+            return images, targets
+
+        # =====================================================
+        # CASE 2 — GAZE IMAGENET (special pipeline)
+        # =====================================================
+        B, C, H, W = images.shape
+        outputs = []
+
+        for i in range(B):
+
+            img = images[i:i+1]
+
+            ratio = meta["ratio"][i].to(images.device)
+            gaze_rel = meta["gaze"][i].to(images.device)
+
+            valid_W = int((ratio[0] * W).item())
+            valid_H = int((ratio[1] * H).item())
+
+            # remove padding
+            img = img[:, :, :valid_H, :valid_W]
+
+            gaze_abs = torch.stack([
+                gaze_rel[0] * valid_W,
+                gaze_rel[1] * valid_H
+            ]).view(1,2)
+
+            saliency = None
+
+            if self.foveation is not None:
+                if (not self._foveation_debug_printed and (not dist.is_available() or not dist.is_initialized() or dist.get_rank() == 0)):
+                    print("\n[FOVEATION DEBUG] Linear Eval foveation is ACTIVE on GPU\n")
+                    self._foveation_debug_printed = True
                 img = self.foveation(img, gaze_abs, saliency)
-                # apply spatial transform immediately
-                if spatial is not None:
-                    img = spatial(img.squeeze(0)).unsqueeze(0)
-                outputs.append(img)
-                
-            images = torch.cat(outputs, dim=0)
 
-        # batch transforms
+            if spatial is not None:
+                img = spatial(img[0]).unsqueeze(0)
+
+            outputs.append(img)
+
+        images = torch.cat(outputs, dim=0)
+
         if batch_tf is not None:
             images = batch_tf(images)
-            # images = torch.stack([batch_tf(images[i]) for i in range(images.shape[0])])
-            
+
         return images, targets
-    """
 
 
     def forward_backbone(self, X: torch.Tensor) -> torch.Tensor:

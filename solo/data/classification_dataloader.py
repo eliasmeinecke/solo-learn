@@ -35,7 +35,7 @@ from torchvision.transforms import InterpolationMode
 from solo.data.custom.imagenet import ImgNetDataset_42
 from solo.data.custom.base import H5ClassificationDataset
 from solo.data.custom.core50 import Core50, Core50ForBGClassification
-from solo.data.custom.gaze_imagenet import ImgNetWithGaze, ImgNetWithGaze42
+from solo.data.custom.gaze_imagenet import ImgNetWithGaze, ImgNetDataset_42_Gaze
 
 try:
     from solo.data.h5_dataset import H5Dataset
@@ -195,7 +195,7 @@ def _get_pipeline(dataset: str) -> dict:
     # --------------------------------------------------------------- ImageNet with Gaze-Centroids
     gaze_imagenet_pipeline = {
         "T_Pre_Train": v2.Compose([
-            v2.Resize((224,224), interpolation=InterpolationMode.BICUBIC, antialias=True),
+            v2.Resize(540, interpolation=InterpolationMode.BICUBIC, antialias=True),
             v2.ToImage()
             ]),
         "T_train": v2.Compose([
@@ -205,7 +205,7 @@ def _get_pipeline(dataset: str) -> dict:
             v2.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD),
         ]),
         "T_Pre_Val": v2.Compose([
-            v2.Resize((224,224), interpolation=InterpolationMode.BICUBIC, antialias=True),
+            v2.Resize(540, interpolation=InterpolationMode.BICUBIC, antialias=True),
             v2.ToImage()
         ]),
         "T_val": v2.Compose([
@@ -493,8 +493,8 @@ def prepare_datasets(
     elif dataset in ["gaze_imagenet_42", "gaze_imagenet100_42"]:
         # doesn't work at all yet! add subset-logic!
         subset = "imgnet100" if dataset == "gaze_imagenet100_42" else None
-        train_dataset = ImgNetWithGaze42(train_data_path, T_train, split="train", subset=subset)
-        val_dataset = ImgNetWithGaze42(val_data_path, T_val, split="val", subset=subset)
+        train_dataset = ImgNetDataset_42_Gaze(Path(train_data_path) / "ImageNet/h5", T_train, split="train", subset=subset)
+        val_dataset = ImgNetDataset_42_Gaze(Path(val_data_path) / "ImageNet/h5", T_val, split="val", subset=subset)
 
     elif dataset in ["imagenet_42", "imagenet100_42", "imagenet1pct_42", "imagenet10pct_42"]:
         if dataset == "imagenet100_42":

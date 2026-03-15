@@ -38,7 +38,7 @@ class GazeCenteredCropGPU(nn.Module):
         y_g = gaze[0, 1]
 
         # crop size
-        N = int(self.crop_ratio * min(H, W))
+        N = int(self.crop_ratio * max(H, W))
         half = N // 2
 
         # clamp center so crop stays inside image

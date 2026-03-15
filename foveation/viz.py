@@ -50,7 +50,8 @@ def main():
     
     # viz_fov(samples, method="blur")
     # viz_imagenet_mask_samples(4)
-    viz_imagenet_fov_samples(3, remove_padding=False)
+    viz_imagenet_fov_samples(3, remove_padding_bool=True)
+    viz_imagenet_fov_samples(3, remove_padding_bool=False)
     
     # needs changing after gpu-switch:
     # viz_cm_saliency_effect(samples)
@@ -517,7 +518,7 @@ def preprocess_like_dataset(img):
     img = TF.pad(img, (0,0,pad_right,pad_bottom), fill=0)
 
     # resize
-    img = TF.resize(img, (224,224))
+    img = TF.resize(img, (540,540))
 
     return img, w_ratio, h_ratio
 
@@ -532,7 +533,7 @@ def remove_padding(img_tensor, ratio):
     return img_tensor[:, :, :valid_H, :valid_W]
 
     
-def viz_imagenet_fov_samples(n, remove_padding):
+def viz_imagenet_fov_samples(n, remove_padding_bool):
 
     crop_fov = GazeCenteredCropGPU()
     blur_fov = RadialBlurFoveation()
@@ -566,23 +567,26 @@ def viz_imagenet_fov_samples(n, remove_padding):
         img = val_ds[i][0]
         dp = json_by_filename[filename]
         
+        W_img_original, H_img_original = img.size
+        
         img_proc, w_ratio, h_ratio = preprocess_like_dataset(img)
-
-        img_tensor = pil_to_tensor(img_proc).unsqueeze(0)
+        img_tensor = pil_to_tensor(img_proc).unsqueeze(0)            
 
         ratio = torch.tensor([w_ratio, h_ratio])
-
-        if remove_padding:
+        
+    
+        # OPTIONAL padding removal
+        if remove_padding_bool:
             img_tensor = remove_padding(img_tensor, ratio)
-            _, _, H_img, W_img = img_tensor.shape            
-        else:
-            _, _, H_img, W_img = img_tensor.shape
-            H_img = int(ratio[0] * H_img)
-            W_img = int(ratio[0] * W_img)
+
+        _, _, H_img, W_img = img_tensor.shape            
 
         cx_rel = dp["centroid"]["x_rel"]
         cy_rel = dp["centroid"]["y_rel"]
 
+        cx_abs_original = cx_rel * W_img_original
+        cy_abs_original = cy_rel * H_img_original
+        
         cx_abs = cx_rel * W_img
         cy_abs = cy_rel * H_img
 
@@ -605,7 +609,7 @@ def viz_imagenet_fov_samples(n, remove_padding):
         img_np = np.array(img)
 
         axes[row,0].imshow(img_np)
-        axes[row,0].scatter(cx_abs, cy_abs, c="red", s=20)
+        axes[row,0].scatter(cx_abs_original, cy_abs_original, c="red", s=20)
         axes[row,0].set_title("Original")
 
         axes[row,1].imshow(crop_np)
@@ -622,7 +626,9 @@ def viz_imagenet_fov_samples(n, remove_padding):
 
     plt.tight_layout()
     
-    save_name=f"imagenet_examples.png"
+    suffix = "nopad" if remove_padding_bool else "withpad"
+    save_name = f"imagenet_examples_{suffix}.png"
+    
     base_dir = Path(__file__).resolve().parent
     out_path = base_dir / "plots" / "imagenet_fovs" / save_name
 

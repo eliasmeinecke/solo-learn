@@ -72,7 +72,7 @@ class CorticalMagnification(nn.Module):
         fov = self.fov_ratio * base_size
         K = self.K_ratio * base_size
         
-        if self.saliency_beta != 0:
+        if (self.saliency_beta != 0) and (saliency is not None):
             fov = fov * (1.0 + self.saliency_beta * spread_norm)
 
         # radial transform
