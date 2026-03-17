@@ -32,70 +32,59 @@ def fill_mask_holes_floodfill(mask):
     return (mask_filled > 0).astype(np.uint8)
 
 
-def update_mask_json(train_or_val):
-    
-    if train_or_val not in ["train", "val"]:
-        print("Choose either train or val.")
-        return None
-    
-    # Load JSON
-    input_path = f"/home/data/elias/imagenet_sam_masks/imagenet_{train_or_val}_masks.json"
-    output_path = f"/home/data/elias/imagenet_sam_masks/imagenet_{train_or_val}_masks_with_center.json"
+def build_gaze_json(train_or_val):
 
+    if train_or_val not in ["train", "val"]:
+        raise ValueError("Choose either train or val.")
+
+    input_path = f"/home/data/elias/imagenet_sam_masks/imagenet_{train_or_val}_masks.json"
+    output_path = f"/home/data/elias/imagenet_sam_masks/imagenet_{train_or_val}_gaze_only.json"
 
     with open(input_path, "r") as f:
         data = json.load(f)
 
     print("Total masks:", len(data))
 
+    out = {}
 
-    # Process all masks
-    for idx in tqdm(data.keys()):
+    for idx in tqdm(data.keys(), desc=f"Processing {train_or_val}"):
 
-        mask = mask_utils.decode(data[idx]["rle"])
+        entry = data[idx]
+
+        mask = mask_utils.decode(entry["rle"])
         H, W = mask.shape
 
         mask_clean = fill_mask_holes_floodfill(mask)
 
         cx, cy = compute_centroid(mask_clean)
 
-        
-        # Fallback: image center
+        # fallback: image center
         if cx is None or cy is None:
             cx = W / 2
             cy = H / 2
 
         cx_rel = float(cx / W)
         cy_rel = float(cy / H)
-        
-        # 1) True mask area
+
         area_mask_rel = float(mask_clean.sum() / (H * W))
 
-        # 2) Bounding box area
-        x1, y1, x2, y2 = data[idx]["bbox"]
-        bbox_area = (x2 - x1) * (y2 - y1)
-        area_bbox_rel = float(bbox_area / (H * W))
-        
-        # Write to JSON
-        data[idx]["centroid"] = {
-            "x_rel": cx_rel,
-            "y_rel": cy_rel
+        # only necessary output
+        out[idx] = {
+            "filename": entry["filename"],
+            "centroid": {
+                "x_rel": cx_rel,
+                "y_rel": cy_rel
+            },
+            "area": area_mask_rel
         }
 
-        data[idx]["area_mask_rel"] = area_mask_rel
-        data[idx]["area_bbox_rel"] = area_bbox_rel
-
-
-    # Save updated JSON
     with open(output_path, "w") as f:
-        json.dump(data, f)
+        json.dump(out, f)
 
     print("Saved:", output_path)
-    
-    
+
+
 if __name__ == "__main__":
     print("---------------------------------------------")
-    #update_mask_json("val")
-    
-
-   
+    # build_gaze_json("train")
+    # build_gaze_json("val")

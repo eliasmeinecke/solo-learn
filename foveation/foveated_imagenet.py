@@ -33,7 +33,7 @@ def build_foveated_imagenet(foveation, split, out_dir_suffix, max_images=None):
 
     out_path = out_dir / f"{split}.h5"
     
-    json_path = JSON_PATH / f"imagenet_{split}_masks_with_center.json"
+    json_path = JSON_PATH / f"imagenet_{split}_gaze_only.json"
     if not json_path.exists():
         raise FileNotFoundError(f"JSON not found: {json_path}")
 
