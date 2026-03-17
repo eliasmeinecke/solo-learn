@@ -8,6 +8,8 @@ from foveation.methods.gaze_crop import GazeCenteredCropGPU
 from foveation.methods.radial_blur import RadialBlurFoveation
 from foveation.methods.cm import CorticalMagnification
 
+VALID_FOVS = ["crop", "blur-light", "blur-nosal", "blur-strong", "cm-light", "cm-nosal", "cm-strong"]
+
 class GazePredictor(nn.Module):
     """
     Produces gaze and saliency tensors for linear evaluation.
@@ -102,6 +104,41 @@ def setup_foveation(foveation_cfg, gaze_imagenet=False):
     return None
 
 
+def setup_exact_foveation(fov_type):
+    if fov_type in VALID_FOVS:
+        if fov_type == "crop":
+                return GazeCenteredCropGPU(crop_size=336)
+        elif fov_type == "blur-light":
+            return RadialBlurFoveation(radii_frac=[0.35, 0.8], sigma_base_frac=0.004)   
+        elif fov_type == "blur-nosal":
+            return RadialBlurFoveation(radii_frac=[0.3, 0.7], sigma_base_frac=0.006)   
+        elif fov_type == "blur-strong":
+            return RadialBlurFoveation(radii_frac=[0.25, 0.6], sigma_base_frac=0.008)
+        elif fov_type == "cm-light":
+            return CorticalMagnification(fov_ratio=0.5)
+        elif fov_type == "cm-nosal":
+            return CorticalMagnification(fov_ratio=0.3125)
+        elif fov_type == "cm-strong":
+            return CorticalMagnification(fov_ratio=0.15)
+    else:
+        raise ValueError(f"Invalid foveation type {fov_type} requested.")
+
+
+def get_foveation_suffix(run_name: str) -> str:
+
+    parts = run_name.split("-")
+
+    if "crop" in parts:
+        return "crop"
+
+    # otherwise cm / blur
+    for i, p in enumerate(parts):
+        if p in ["cm", "blur"]:
+            return f"{p}-{parts[i+1]}"
+
+    return "no-fov"
+
+
 def log_foveation_config(foveation_cfg, context: str, gpu_augmentation: bool = True, gaze_imagenet: bool = False):
     """
     Logs foveation configuration and whether it is applied
@@ -130,30 +167,31 @@ def log_foveation_config(foveation_cfg, context: str, gpu_augmentation: bool = T
     applied = False
     location = ""
 
-    # CROP (CPU only, pretrain only)
-    if fov_type == "crop":
-        if context == "pretrain":
-            applied = True
-            location = "CPU (Dataset)"
-        elif context == "linear_eval" and gaze_imagenet == True:
-            applied = True
-            location = "GPU (Dataset)"
-        else:
-            applied = False
-            location = "Not applied in this context"
-
-    # BLUR / CM (GPU only)
-    elif fov_type in ["blur", "cm"]:
-        if gpu_augmentation:
-            applied = True
-            location = "GPU"
-        else:
-            applied = False
-            location = "GPU augmentation disabled"
-
+    if gaze_imagenet:
+        applied = True
+        location = "GPU (External Dataset)"
     else:
-        applied = False
-        location = "Unknown type"
+        # CROP (CPU only, pretrain only)
+        if fov_type == "crop":
+            if context == "pretrain":
+                applied = True
+                location = "CPU (Dataset)"
+            else:
+                applied = False
+                location = "Not applied in this context"
+
+        # BLUR / CM (GPU only)
+        elif fov_type in ["blur", "cm"]:
+            if gpu_augmentation:
+                applied = True
+                location = "GPU"
+            else:
+                applied = False
+                location = "GPU augmentation disabled"
+
+        else:
+            applied = False
+            location = "Unknown type"
 
     print(f"[FOVEATION] ({context}) Configured: {fov_type.upper()}")
 

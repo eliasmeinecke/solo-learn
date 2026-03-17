@@ -42,7 +42,8 @@ from solo.utils.auto_resumer import AutoResumer
 from solo.utils.checkpointer import Checkpointer
 from solo.utils.misc import make_contiguous
 
-from foveation.factory import setup_foveation, log_foveation_config
+from foveation.factory import setup_foveation, log_foveation_config, get_foveation_suffix
+from foveation.foveated_imagenet import build_foveated_imagenet
 
 try:
     from solo.data.dali_dataloader import ClassificationDALIDataModule
@@ -85,6 +86,9 @@ def main(cfg: DictConfig):
         with open(args_path, "r") as f:
             pretrain_args = json.load(f)
 
+        run_name = pretrain_args.get("name")
+        suffix = get_foveation_suffix(run_name)
+        
         foveation_cfg = (
             pretrain_args
             .get("data", {})
@@ -98,14 +102,26 @@ def main(cfg: DictConfig):
             print("[LinearEval] No foveation found in args.json")
     else:
         print("[LinearEval] No args.json found next to checkpoint")
-    
-    if cfg.data.dataset in ["gaze_imagenet", "gaze_imagenet100", "gaze_imagenet_42", "gaze_imagenet100_42"]:
-        gaze_imagenet = True
+
+    if cfg.data.dataset == "gaze_imagenet":
+        if foveation_cfg is None:
+            raise ValueError("No foveation config found but gaze_imagenet requested.")
+        if suffix is None:
+            raise ValueError(f"Could not extract foveation suffix from run name: {run_name}")
+        gaze_imagenet = True   
+        foveation = setup_foveation(foveation_cfg, gaze_imagenet=gaze_imagenet)
+        actual_dataset = "imagenet_42"
+        train_path = build_foveated_imagenet(foveation, split="train", out_dir_suffix=suffix)
+        val_path = build_foveated_imagenet(foveation, split="val", out_dir_suffix=suffix)
+        foveation = None
     else:
         gaze_imagenet = False
+        foveation = setup_foveation(foveation_cfg, gaze_imagenet=gaze_imagenet)
+        actual_dataset = cfg.data.dataset
+        train_path = cfg.data.train_path
+        val_path = cfg.data.val_path
         
-    foveation = setup_foveation(foveation_cfg, gaze_imagenet=gaze_imagenet)        
-    log_foveation_config(foveation_cfg, context="linear_eval", gpu_augmentation=True, gaze_imagenet=gaze_imagenet)    
+    log_foveation_config(foveation_cfg, context="linear_eval", gpu_augmentation=True, gaze_imagenet=gaze_imagenet)
     
     state = torch.load(ckpt_path, map_location="cpu")["state_dict"]
     for k in list(state.keys()):
@@ -148,9 +164,9 @@ def main(cfg: DictConfig):
         val_data_format = cfg.data.format
 
     train_loader, val_loader, T_train_gpu, T_val_gpu = prepare_data(
-        cfg.data.dataset,
-        train_data_path=cfg.data.train_path,
-        val_data_path=cfg.data.val_path,
+        dataset=actual_dataset,
+        train_data_path=train_path,
+        val_data_path=val_path,
         data_format=val_data_format,
         batch_size=cfg.optimizer.batch_size,
         num_workers=cfg.data.num_workers,
