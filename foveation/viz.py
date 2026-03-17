@@ -10,78 +10,100 @@ from PIL import Image
 from pathlib import Path
 from types import SimpleNamespace
 import torch
+import torchvision.transforms.functional as TF
 
-from foveation.factory import FoveationTransform
-from foveation.methods.gaze_crop import GazeCenteredCrop
+from foveation.factory import GazePredictor
 from foveation.methods.radial_blur import RadialBlurFoveation
-from foveation.methods.cm import CortalMagnification
+from foveation.methods.cm import CortalMagnification, radial_quadratic_batch
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main():
-    ANNOT_PATH = "/home/data/elias/Ego4dDivSubset/annot.parquet"
-    H5_PATH = "/home/data/elias/Ego4dDivSubset/ego4d_diverse_subset.h5"
 
-    # i = 99_002 # (for 2 saliency "blobs")
-    i = 100_003
+    indices = [99_002, 100_003]
 
-    df = pd.read_parquet(ANNOT_PATH)
+    samples = []
 
-    with h5py.File(H5_PATH, "r") as hf:
-        frame = hf.get("frames")[i]
-        saliency = hf.get("saliency")[i]
-        frame = Image.open(io.BytesIO(frame)).convert("RGB")
-        # convert from BGR to RGB
-        frame = np.array(frame)[:, :, ::-1]
-        frame = Image.fromarray(frame)
+    for i in indices:
+
+        frame, annot, saliency = load_sample(i)
+
+        img_tensor, gaze_tensor, sal_tensor = prepare_tensors(
+            frame, annot, saliency
+        )
+
+        samples.append({
+            "frame": frame,
+            "img_tensor": img_tensor,
+            "gaze_tensor": gaze_tensor,
+            "sal_tensor": sal_tensor,
+            "annot": annot
+        })
     
-    annot = df.iloc[i]
-    saliency = saliency.astype(np.float32)
-     
-    # methods: crop, blur, cm
-    # viz_fov(frame, annot, saliency, "cm")
-    # benchmark_fov(frame, annot, saliency, "cm")
+    viz_fov(samples, method="blur")
     
-    # viz_relative_sigmas(frame, annot, saliency)
+    # needs changing after gpu-switch:
+    # viz_cm_saliency_effect(samples)
+    
+    # clean up/repair later:
     # viz_blur_heatmaps(frame, annot, saliency)
-    
-    viz_cm_overview(frame, annot, saliency)
-    
     # viz_saliency(frame, annot, saliency)
-    # viz_eval_saliency(frame, FoveationTransform(foveation=None, base_transform=lambda x: x))
-
-
-def viz_fov(frame, annot, saliency, method):
+    # viz_eval_saliency(frame)
     
-    img_np = np.array(frame)
-    H, W, _ = img_np.shape
-
-    x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
-    S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
-    S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+    # update/create & test:
+    # viz_relative_sigmas(frame, annot, saliency)
+    # viz_relative_cm(frame, annot, saliency)
     
-    if method == "crop":
-        out = GazeCenteredCrop()(frame, annot, S)
-    elif method == "blur":
-        out = RadialBlurFoveation()(frame, annot, S)
-    elif method == "cm":  # wip
-        out = CortalMagnification()(frame, annot, S)
-    else:
-        out = frame
-    
-    out.resize((540, 540), resample=Image.BILINEAR)
 
-    plt.figure(figsize=(8, 4))
-    plt.subplot(1, 2, 1)
-    plt.title("Original")
-    plt.imshow(frame)
-    plt.scatter(x_g, y_g, c="red", s=20)
-    plt.axis("off")
 
-    plt.subplot(1, 2, 2)
-    plt.title("Foveation")
-    plt.imshow(out)
-    plt.scatter(x_g, y_g, c="red", s=20)
-    plt.axis("off")
+def viz_fov(samples, method="cm"):
+
+    if method == "blur":
+        fov = RadialBlurFoveation().to(device)
+    elif method == "cm":
+        fov = CortalMagnification().to(device)
+
+    n = len(samples)
+
+    fig, axes = plt.subplots(n, 2, figsize=(8,4*n))
+
+    for i, sample in enumerate(samples):
+
+        frame = sample["frame"]
+        img_tensor = sample["img_tensor"]
+        sal_tensor = sample["sal_tensor"]
+        gaze_tensor = sample["gaze_tensor"]
+        annot = sample["annot"]
+
+        with torch.no_grad():
+            out_tensor = fov(img_tensor, gaze_tensor, sal_tensor)
+
+        out = (
+            out_tensor.squeeze(0)
+            .permute(1,2,0)
+            .cpu()
+            .numpy()
+        )
+
+        axes[i,0].imshow(frame)
+        axes[i,0].scatter(
+            annot.gaze_loc_x,
+            annot.gaze_loc_y,
+            c="red",
+            s=20
+        )
+        axes[i,0].set_title("Original")
+        axes[i,0].axis("off")
+
+        axes[i,1].imshow(out)
+        axes[i,1].scatter(
+            annot.gaze_loc_x,
+            annot.gaze_loc_y,
+            c="red",
+            s=20
+        )
+        axes[i,1].set_title(method)
+        axes[i,1].axis("off")
 
     plt.tight_layout()
 
@@ -94,35 +116,6 @@ def viz_fov(frame, annot, saliency, method):
     plt.close()
 
     print(f"Saved {file_name}")  
-    
-    
-def benchmark_fov(frame, annot, saliency, method, runs=100):
-    
-    if method == "crop":
-        foveation = GazeCenteredCrop()
-    elif method == "blur":
-        foveation = RadialBlurFoveation()
-    elif method == "cm":  # wip
-        foveation = CortalMagnification()
-    else:
-        print("No benchmarkable foveation given.")
-        return None
-
-    for _ in range(10):
-        _ = foveation(frame, annot, saliency)
-    
-    start = time.perf_counter()
-    
-    for _ in range(runs):
-        _ = foveation(frame, annot, saliency)
-    
-    end = time.perf_counter()
-    
-    avg_time = (end - start) / runs
-    
-    print(f"Using fov method: {method}")
-    print(f"Average fov time per image: {avg_time:.4f} seconds")
-    print(f"Images per second: {1/avg_time:.2f}")
     
     
 def viz_relative_sigmas(frame, annot, saliency):
@@ -274,56 +267,135 @@ def viz_blur_heatmaps(frame, annot, saliency):
     print(f"Saved {file_name}")   
 
 
-def viz_cm_overview(frame, annot, saliency):
+def viz_cm_saliency_effect(samples, betas=[0.0, 1.0, 3.0]):
+    
+    sample = samples[0]
+    frame = sample["frame"]
+    img_tensor = sample["img_tensor"]
+    sal_tensor = sample["sal_tensor"]
+    gaze_tensor = sample["gaze_tensor"]
+        
+    device = img_tensor.device
+    B, C, H, W = img_tensor.shape
 
-    img_np = np.array(frame)
-    H, W, _ = img_np.shape
+    x_g = gaze_tensor[0,0].item()
+    y_g = gaze_tensor[0,1].item()
 
-    x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
+    with torch.no_grad():
 
-    # --- normalize saliency ---
-    S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR)
-    S = S.astype(np.float32)
-    S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+        ys = torch.arange(H, device=device).view(1, H, 1).expand(1, H, W)
+        xs = torch.arange(W, device=device).view(1, 1, W).expand(1, H, W)
 
-    # --- CM instances ---
-    cm_no_sal = CortalMagnification(saliency_beta=0.0)
-    cm_sal = CortalMagnification(saliency_beta=1)
+        dx = xs - x_g
+        dy = ys - y_g
+        r = torch.sqrt(dx**2 + dy**2 + 1e-6)
 
-    out_no_sal = cm_no_sal(frame, annot, S)
-    out_sal = cm_sal(frame, annot, S)
+        sal_norm = sal_tensor / (
+            sal_tensor.sum(dim=(2,3), keepdim=True) + 1e-6
+        )
+        sal_norm = sal_norm.squeeze(1)
 
-    # --- plotting ---
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        mean_r = torch.sum(sal_norm * r, dim=(1,2), keepdim=True)
+        mean_r2 = torch.sum(sal_norm * r**2, dim=(1,2), keepdim=True)
+        std_r = torch.sqrt(torch.clamp(mean_r2 - mean_r**2, min=0.0))
+        spread_norm = std_r / r.amax(dim=(1,2), keepdim=True)
+        spread_value = spread_norm.item()
 
-    # Original
-    axes[0, 0].imshow(frame)
-    axes[0, 0].scatter(x_g, y_g, c="red", s=30)
-    axes[0, 0].set_title("Original Image + Gaze")
+    base_size = min(H, W)
+    fov_base = 0.3125 * base_size
+    K = 0.208 * base_size
 
-    # CM without saliency
-    axes[0, 1].imshow(out_no_sal)
-    axes[0, 1].scatter(x_g, y_g, c="red", s=30)
-    axes[0, 1].set_title("Cortical Magnification")
+    # -------------------------------------------------
+    # Plot Layout: 2 rows × 4 columns
+    # -------------------------------------------------
 
-    # Saliency
-    axes[1, 0].imshow(S, cmap="magma")
-    axes[1, 0].set_title("Saliency Map")
+    fig, axes = plt.subplots(2, 4, figsize=(18,9))
 
-    # CM with saliency
-    axes[1, 1].imshow(out_sal)
-    axes[1, 1].scatter(x_g, y_g, c="red", s=30)
-    axes[1, 1].set_title("CM + Saliency")
+    # -----------------------
+    # Row 1: Original + CM
+    # -----------------------
 
-    for ax in axes.flat:
-        ax.axis("off")
+    axes[0,0].imshow(frame)
+    axes[0,0].scatter(x_g, y_g, c="red", s=20)
+    axes[0,0].set_title("Original")
+    axes[0,0].axis("off")
+
+    # -----------------------
+    # Row 2: Saliency
+    # -----------------------
+
+    sal_np = sal_tensor.squeeze().cpu().numpy()
+    axes[1,0].imshow(sal_np, cmap="viridis")
+    axes[1,0].scatter(x_g, y_g, c="red", s=20)
+    axes[1,0].set_title(f"Saliency\nspread_norm={spread_value:.3f}")
+    axes[1,0].axis("off")
+
+    # -----------------------
+    # CM variants
+    # -----------------------
+
+    for col, beta in enumerate(betas):
+
+        cm = CortalMagnification(saliency_beta=beta).to(device)
+
+        with torch.no_grad():
+            out_tensor = cm(img_tensor, gaze_tensor, sal_tensor)
+
+        out_np = (
+            out_tensor.squeeze(0)
+            .permute(1,2,0)
+            .cpu()
+            .numpy()
+        )
+
+        fov_eff = fov_base * (1 + beta * spread_value)
+
+        # ---- CM Image ----
+        axes[0, col+1].imshow(out_np.astype(np.uint8))
+        axes[0, col+1].scatter(x_g, y_g, c="red", s=20)
+        axes[0, col+1].set_title(
+            f"CM β={beta}\nfov_eff={fov_eff:.1f}"
+        )
+        axes[0, col+1].axis("off")
+
+        # ---- Distortion Map ----
+        fov_eff_tensor = torch.tensor(
+            fov_base * (1 + beta * spread_value),
+            device=device
+        )
+
+        r_new = radial_quadratic_batch(
+            r,
+            fov_eff_tensor.view(1,1,1),
+            torch.tensor(K, device=device).view(1,1,1)
+        )
+        
+    
+        eps = 1e-6
+        magnification = (r_new / (r + eps)).squeeze().cpu().numpy()
+
+        # robuste Kontrast-Skalierung
+        vmin = np.percentile(magnification, 2)
+        vmax = np.percentile(magnification, 98)
+
+        im = axes[1, col+1].imshow(
+            magnification,
+            cmap="RdBu_r",
+            vmin=vmin,
+            vmax=vmax
+        )
+
+        axes[1, col+1].scatter(x_g, y_g, c="white", s=20)
+        axes[1, col+1].set_title("Magnification (r_new / r)")
+        axes[1, col+1].axis("off")
+
 
     plt.tight_layout()
 
     # --- save ---
-    file_name = "ego4d_cm_overview.png"
+    file_name = "cm_saliency_effect.png"
     base_dir = Path(__file__).resolve().parent
-    out_path = base_dir / "plots" / "cm_overview" / file_name
+    out_path = base_dir / "plots" / "cm_saliency" / file_name
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     plt.savefig(out_path, dpi=200)
@@ -353,26 +425,58 @@ def viz_saliency(frame, annot, saliency):
     print("Saved ego4d_example.png")  
     
     
-def viz_eval_saliency(frame, foveation_transform):
+def viz_eval_saliency(frame):
+    """
+    Visualize GazePredictor saliency output for a single frame.
 
-    annot = foveation_transform._build_center_annotation(frame)
-    saliency = foveation_transform._build_center_saliency()
-    
+    Args:
+        frame (PIL.Image or np.ndarray): RGB image
+        save_name (str): output filename
+    """
+
+    # Prepare image
+    if isinstance(frame, Image.Image):
+        img_np = np.array(frame)
+    else:
+        img_np = frame
+
+    H, W = img_np.shape[:2]
+
+    # Convert to tensor (B,C,H,W)
+    img_tensor = (
+        torch.from_numpy(img_np)
+        .permute(2, 0, 1)
+        .unsqueeze(0)
+        .to(torch.uint8)
+    )
+
+    # Run GazePredictor
+    gaze_predictor = GazePredictor()
+    gaze, saliency = gaze_predictor(img_tensor)
+
+    # Remove batch dimension
+    gaze = gaze[0]
+    saliency = saliency[0, 0].cpu().numpy()
+
+    gaze_x, gaze_y = gaze.tolist()
+
+    # Find saliency maximum
     flat_max = saliency.argmax()
-    max_x, max_y = flat_max % 64, flat_max // 64
+    max_y, max_x = np.unravel_index(flat_max, saliency.shape)
 
-    fig, ax = plt.subplots(1, 2, figsize=(8, 4))
+    # Plot
+    fig, ax = plt.subplots(1, 2, figsize=(10, 4))
 
-    # original
-    ax[0].imshow(np.array(frame))
-    ax[0].scatter(annot.gaze_loc_x, annot.gaze_loc_y, c="red", s=50)
-    ax[0].set_title("Image + Gaze")
+    # Image + gaze
+    ax[0].imshow(img_np)
+    ax[0].scatter(gaze_x, gaze_y, c="red", s=60)
+    ax[0].set_title("Image + Predicted Gaze")
     ax[0].axis("off")
 
-    # saliency
+    # Saliency
     ax[1].imshow(saliency, cmap="viridis")
-    ax[1].scatter(max_x, max_y, c="red", s=50)
-    ax[1].set_title("Saliency + Max")
+    ax[1].scatter(max_x, max_y, c="red", s=60)
+    ax[1].set_title("Saliency Map + Maximum")
     ax[1].axis("off")
 
     plt.tight_layout()
@@ -387,6 +491,58 @@ def viz_eval_saliency(frame, foveation_transform):
 
     print(f"Saved {save_name}")
     
+
+def load_sample(i):
+    ANNOT_PATH = "/home/data/elias/Ego4dDivSubset/annot.parquet"
+    H5_PATH = "/home/data/elias/Ego4dDivSubset/ego4d_diverse_subset.h5"
+
+    df = pd.read_parquet(ANNOT_PATH)
+
+    with h5py.File(H5_PATH, "r") as hf:
+        frame = hf.get("frames")[i]
+        saliency = hf.get("saliency")[i]
+        frame = Image.open(io.BytesIO(frame)).convert("RGB")
+        # convert from BGR to RGB
+        frame = np.array(frame)[:, :, ::-1]
+        frame = Image.fromarray(frame)
+    
+    annot = df.iloc[i]
+    saliency = saliency.astype(np.float32)
+    
+    return frame, annot, saliency
+
+
+def prepare_tensors(frame, annot, saliency):
+
+    img_np = np.array(frame)
+    H, W, _ = img_np.shape
+
+    img_tensor = (
+        torch.from_numpy(img_np)
+        .permute(2,0,1)
+        .unsqueeze(0)
+        .to(device)
+        .to(torch.uint8)
+    )
+
+    gaze_tensor = torch.tensor(
+        [[annot.gaze_loc_x, annot.gaze_loc_y]],
+        device=device
+    ).float()
+    
+    S = cv2.resize(saliency, (W,H))
+    S = (S - S.min()) / (S.max() - S.min() + 1e-6)
+
+    sal_tensor = (
+        torch.from_numpy(S)
+        .unsqueeze(0)
+        .unsqueeze(0)
+        .float()
+        .to(device)
+    )
+
+    return img_tensor, gaze_tensor, sal_tensor
+
 
 if __name__ == "__main__":
     main()

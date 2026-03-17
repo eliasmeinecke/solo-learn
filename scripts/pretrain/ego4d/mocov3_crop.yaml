@@ -32,6 +32,8 @@ data:
   val_path: None
   format: "h5"
   num_workers: 8
+  gpu_augmentation: True
+  gpu_pre_image_size: 540
   dataset_kwargs:
     time_window: 15
     foveation:

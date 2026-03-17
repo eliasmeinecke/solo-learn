@@ -1,14 +1,50 @@
 [
   {
-    "model_name": "mocov3-ego4d-base",
-    "id": "15lbxdst",
-    "foveation_strategy": "none",
-    "time_window": 15
+    "id": "8c585it0",
+    "name": "mocov3-ego4d-blur-strong-gpu-aug",
+    "time_window": "15",
+    "foveation_type": "blur"
   },
   {
-    "model_name": "mocov3-ego4d-crop",
-    "id": "saoza7nn",
-    "foveation_strategy": "crop",
-    "time_window": 15
+    "id": "ey1tyyt1",
+    "name": "mocov3-ego4d-cm-strong-gpu-aug",
+    "time_window": "15",
+    "foveation_type": "cm"
+  },
+  {
+    "id": "p6kjtoq4",
+    "name": "mocov3-ego4d-cm-light-gpu-aug",
+    "time_window": "15",
+    "foveation_type": "cm"
+  },
+  {
+    "id": "8c7hvt4u",
+    "name": "mocov3-ego4d-blur-light-gpu-aug",
+    "time_window": "15",
+    "foveation_type": "blur"
+  },
+  {
+    "id": "cbg5z9s8",
+    "name": "mocov3-ego4d-cm-nosal-gpu-aug",
+    "time_window": "15",
+    "foveation_type": "cm"
+  },
+  {
+    "id": "rhtkva61",
+    "name": "mocov3-ego4d-blur-nosal-gpu-aug",
+    "time_window": "15",
+    "foveation_type": "blur"
+  },
+  {
+    "id": "u2ja20do",
+    "name": "mocov3-ego4d-crop-gpu-aug",
+    "time_window": "15",
+    "foveation_type": "crop"
+  },
+  {
+    "id": "y9xhl4ce",
+    "name": "mocov3-ego4d-base-gpu-aug",
+    "time_window": "15",
+    "foveation_type": "none"
   }
 ]

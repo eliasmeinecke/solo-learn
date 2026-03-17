@@ -1,75 +1,110 @@
-
-import numpy as np
-import cv2
-from PIL import Image
-import pandas as pd
-from foveation.methods.base import Foveation
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision.transforms.functional as TF
 
 
-class RadialBlurFoveation(Foveation):
-    def __init__(self, radii_frac=[0.3, 0.7], sigma_base_frac=0.006, sigma_growth=2, saliency_alpha=5.0, transition_frac=0.1):
-        
+class RadialBlurFoveation(nn.Module):
+    def __init__(self, radii_frac=[0.3, 0.7], sigma_base_frac=0.006, sigma_growth=2.0, saliency_alpha=0.0, transition_frac=0.1):
+        super().__init__()
         self.radii_frac = radii_frac
         self.sigma_base_frac = sigma_base_frac
         self.sigma_growth = sigma_growth
         self.saliency_alpha = saliency_alpha
         self.transition_frac = transition_frac
-        self.cached_grids = {}
+        self.register_buffer("_grid_y", None, persistent=False)
+        self.register_buffer("_grid_x", None, persistent=False)
+        self._grid_size = None
 
-    def __call__(self, img: Image.Image, annot: pd.Series, saliency: np.ndarray) -> Image.Image:
-        
-        img_np = np.array(img)
-        H, W, _ = img_np.shape
-        
-        x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
-        
-        S = cv2.resize(saliency, (W, H), interpolation=cv2.INTER_LINEAR).astype(np.float32)
-        
-        if (H, W) not in self.cached_grids:
-            ys = np.arange(H)
-            xs = np.arange(W)
-            X, Y = np.meshgrid(xs, ys)
-            self.cached_grids[(H, W)] = (X.astype(np.float32), Y.astype(np.float32))
+    def forward(self, img, gaze, saliency):
+        """
+        img:       (B, C, H, W) uint8 tensor
+        gaze:      (B, 2) tensor with (x, y)
+        saliency:  (B, 1, H, W) float tensor in [0,1]
+        """
 
-        X, Y = self.cached_grids[(H, W)]
-
-        R = np.sqrt((X - x_g)**2 + (Y - y_g)**2)
-        R_max = np.max(R)
-        R_eff = R / (1.0 + self.saliency_alpha * S)
+        device = img.device
+        B, C, H, W = img.shape
+        img = img.float()
         
+        if self.saliency_alpha != 0:
+            # ensure saliency matches image size & normalize
+            if saliency.shape[-2:] != (H, W):
+                saliency = F.interpolate(
+                    saliency,
+                    size=(H, W),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+            saliency = saliency / (saliency.amax(dim=(2,3), keepdim=True) + 1e-6)
+            saliency = saliency.squeeze(1)
+        
+        if self._grid_y is None or self._grid_size != (H, W):
+
+            ys = torch.arange(H, device=device, dtype=torch.float32).view(1, H, 1)
+            xs = torch.arange(W, device=device, dtype=torch.float32).view(1, 1, W)
+
+            self._grid_y = ys
+            self._grid_x = xs
+            self._grid_size = (H, W)
+
+        ys = self._grid_y.expand(B, H, W)
+        xs = self._grid_x.expand(B, H, W)
+
+        x_g = gaze[:, 0].view(B, 1, 1)
+        y_g = gaze[:, 1].view(B, 1, 1)
+
+        # distance map
+        R = torch.sqrt((xs - x_g) ** 2 + (ys - y_g) ** 2)
+
+        R_max = R.amax(dim=(1, 2), keepdim=True)
+        if self.saliency_alpha != 0:
+            R = R / (1.0 + self.saliency_alpha * saliency)
+
+        # radii & sigmas
         radii = [f * R_max for f in self.radii_frac]
         transition_width = self.transition_frac * R_max
-        
-        sigma_base = self.sigma_base_frac * min(H, W)
-        sigmas = [0]
-        for i in range(len(self.radii_frac)):
-            sigmas.append(sigma_base * (self.sigma_growth ** i))    
 
+        sigma_base = self.sigma_base_frac * min(H, W)
+
+        sigmas = [0.0]
+        for i in range(len(self.radii_frac)):
+            sigmas.append(sigma_base * (self.sigma_growth ** i))
+
+        # blurred versions
         blurred_imgs = []
         for sigma in sigmas:
             if sigma == 0:
-                blurred_imgs.append(img_np)
+                blurred_imgs.append(img)
             else:
-                blurred_imgs.append(cv2.GaussianBlur(img_np, (0, 0), sigma))  # let opencv calculate kernel size
-        
+                # kernel size automatically derived (maybe change logic?)
+                k = int(2 * round(3 * sigma) + 1)
+                blurred = TF.gaussian_blur(img, kernel_size=k, sigma=sigma)
+                blurred_imgs.append(blurred)
+
+        # ring centers
         ring_centers = []
-        prev = 0.0
+        prev = torch.zeros_like(R_max)
+
         for r in radii:
             ring_centers.append(0.5 * (prev + r))
             prev = r
+
         ring_centers.append(prev + transition_width)
-        
+
+        # soft weights
         weights = []
         for c in ring_centers:
-            w = np.exp(-0.5 * ((R_eff - c) / transition_width) ** 2)
+            w = torch.exp(-0.5 * ((R - c) / transition_width) ** 2)
             weights.append(w)
-        weights = np.stack(weights, axis=0)
-        weights /= np.sum(weights, axis=0, keepdims=True) + 1e-6
-        
-        output = np.zeros_like(img_np, dtype=np.float32)
+
+        weights = torch.stack(weights, dim=0)
+        weights = weights / (weights.sum(dim=0, keepdim=True) + 1e-6)
+
+        # weighted blending
+        output = torch.zeros_like(img)
 
         for w, img_blur in zip(weights, blurred_imgs):
-            output += w[..., None] * img_blur
+            output += w.unsqueeze(1) * img_blur
 
-        return Image.fromarray(output.astype(np.uint8))
-    
+        return output.clamp(0, 255).to(torch.uint8)

@@ -12,7 +12,7 @@ hydra:
   run:
     dir: .
 
-name: "cm-nosal-test"
+name: "gpu-blur-test"
 method: "mocov3"
 backbone:
   name: "resnet50"
@@ -28,14 +28,16 @@ momentum:
   final_tau: 0.996
 data:
   dataset: ego4d
-  train_path: "/home/data/elias/Ego4dDivSubset"
+  train_path: ${paths.data_train_path}
   val_path: None
   format: "h5"
   num_workers: 4
+  gpu_augmentation: True
+  gpu_pre_image_size: 540
   dataset_kwargs:
     time_window: 15
     foveation:
-      type: "cm"
+      type: "blur"
       crop:
         crop_size: 336
       blur:
@@ -47,7 +49,7 @@ data:
       cm:
         fov_ratio: 0.3125
         K_ratio: 0.208
-        saliency_beta: 1.0
+        saliency_beta: 2.0
 optimizer:
   name: "lars"
   batch_size: 256
@@ -60,7 +62,7 @@ scheduler:
   warmup_epochs: 0.2
 checkpoint:
   enabled: True
-  dir: "/home/data/elias/trained_models"
+  dir: ${paths.checkpoint_dir}
   frequency: 1
   keep_prev: False
 auto_resume:
@@ -68,8 +70,8 @@ auto_resume:
 knn_clb:
   enabled: True
   dataset: imagenet100
-  train_path:  "/home/data/elias/imagenet100/train"
-  val_path:  "/home/data/elias/imagenet100/val"
+  train_path:  ${paths.knn_clb_train_path}
+  val_path:  ${paths.knn_clb_val_path}
   num_workers: 4
   batch_size: 16
   k: [ 10, 20, 50, 100 ]
@@ -87,5 +89,5 @@ precision: 16-mixed
 no_validation: True # important since we have no validation split
 limit_val_batches: 0
 num_sanity_val_steps: 0
-log_every_n_steps: 200 # increase for larger runs
+log_every_n_steps: 20 # increase for larger runs
 limit_train_batches: 0.02 # percentile or total batches (1.0 for full run)

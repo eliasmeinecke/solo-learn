@@ -10,8 +10,8 @@ hydra:
   run:
     dir: .
 
-name: "nofoveation-linear-eval-test"
-pretrained_feature_extractor: "/home/data/elias/trained_models/mocov3/kk5u2ahm/blur-fov-knn-test2-kk5u2ahm-ep=1.ckpt"
+name: "gpu-blur-linear-eval-test"
+pretrained_feature_extractor: "/home/data/elias/trained_models/mocov3/vbmqs45d/gpu-blur-test1-vbmqs45d-ep=1.ckpt"
 backbone:
   name: "resnet50"
 pretrain_method: "mocov3"

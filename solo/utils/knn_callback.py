@@ -2,32 +2,45 @@ from typing import Dict, Any, Tuple
 
 import lightning.pytorch as pl
 import torch
+import torch.distributed as dist
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 
-from solo.data.classification_dataloader import prepare_datasets, prepare_transforms
+from solo.data.classification_dataloader import prepare_datasets, prepare_separated_transforms
 from solo.utils.knn import WeightedKNNClassifier
+
+from foveation.factory import GazePredictor, setup_foveation, log_foveation_config
 
 
 class KNNCallback(pl.Callback):
-    def __init__(self, cfg: DictConfig, foveation_cfg=None):
+    def __init__(self, cfg: DictConfig, foveation_cfg, gpu_augmentation):
         self.cfg = cfg
         self.train_loader, self.test_loader = None, None
-        self.foveation_cfg = foveation_cfg
+        self.T_train_gpu, self.T_val_gpu = None, None
+        self.foveation_cfg=foveation_cfg
+        self.gpu_augmentation=gpu_augmentation
+        # Only build foveation if GPU augmentation is globally enabled
+        self.foveation = setup_foveation(foveation_cfg) if gpu_augmentation else None        
+        self.gaze_predictor = GazePredictor()
+        self._foveation_debug_printed = False
 
     def on_fit_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        T_train, T_val = prepare_transforms(self.cfg.dataset)
-
+        
+        log_foveation_config(self.foveation_cfg, context="knn", gpu_augmentation=self.gpu_augmentation)
+        
+        T_pre_train, T_train_gpu, T_pre_val, T_val_gpu = prepare_separated_transforms(self.cfg.dataset)
+        
+        self.T_train_gpu, self.T_val_gpu = T_train_gpu, T_val_gpu
+        
         train_dataset, val_dataset = prepare_datasets(
             self.cfg.dataset,
-            T_train,
-            T_val,
+            T_pre_train,
+            T_pre_val,
             train_data_path=self.cfg.train_path,
             val_data_path=self.cfg.val_path,
-            data_format=self.cfg.format,
-            foveation_cfg=self.foveation_cfg,
+            data_format=self.cfg.format
         )
         self.train_loader = DataLoader(
             train_dataset,
@@ -46,7 +59,6 @@ class KNNCallback(pl.Callback):
             drop_last=False,
             sampler=DistributedSampler(val_dataset, shuffle=False)
         )
-
         if isinstance(self.cfg.perform_every_n_batches, float):
             print("Estimated stepping batches", trainer.estimated_stepping_batches)
             self.cfg.perform_every_n_batches = int(trainer.estimated_stepping_batches * self.cfg.perform_every_n_batches / trainer.max_epochs)
@@ -97,7 +109,30 @@ class KNNCallback(pl.Callback):
             X, y = batch
             X = X.to(model.device, non_blocking=True)
             y = y.to(model.device, non_blocking=True)
+            
+            # GPU foveation
+            if (self.foveation is not None):
+                if (
+                    not self._foveation_debug_printed
+                    and (not dist.is_available()
+                        or not dist.is_initialized()
+                        or dist.get_rank() == 0)
+                ):
+                    print("\n[FOVEATION DEBUG] kNN foveation is ACTIVE on GPU\n")
+                    self._foveation_debug_printed = True
+            
+                gaze, saliency = self.gaze_predictor(X)
+                X = self.foveation(X, gaze, saliency)
 
+            # GPU transform
+            transform = (
+                self.T_train_gpu if mode == "train"
+                else self.T_val_gpu
+            )
+
+            if transform is not None:
+                X = torch.stack([transform(X[i]) for i in range(X.shape[0])])
+            
             outs = model(X)
             res_X.append(outs["feats"].detach())
             res_y.append(y.detach())

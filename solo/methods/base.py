@@ -26,6 +26,7 @@ import omegaconf
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.distributed as dist
 from torch.optim.lr_scheduler import MultiStepLR
 
 from solo.backbones import (
@@ -58,6 +59,7 @@ from solo.utils.metrics import accuracy_at_k, weighted_mean
 from solo.utils.misc import omegaconf_select, remove_bias_and_norm_from_weight_decay
 from solo.utils.momentum import MomentumUpdater, initialize_momentum_params
 
+from foveation.factory import GazePredictor
 
 def static_lr(
         get_lr: Callable,
@@ -265,6 +267,8 @@ class BaseMethod(pl.LightningModule):
 
         # Define transform on batches
         self.transform = None
+        self.foveation = None
+        self._foveation_debug_printed = False
 
     @staticmethod
     def add_and_assert_specific_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
@@ -426,26 +430,45 @@ class BaseMethod(pl.LightningModule):
     def on_after_batch_transfer(self, batch, dataloader_idx):
         """
         Called after batch is moved to device and applies transforms on GPU.
-        """
+        """    
+    
+        if self.transform is None:
+            return batch
+        
+        idx, X, targets = batch
+        if isinstance(X, (tuple, list)):
 
-        if self.training and self.transform is not None:
-            idx, X, targets = batch
+            img_batches = list(X)
 
-            if isinstance(X, (tuple, list)):
-                # X is a tuple of frame batches, each (B, C, H, W)
-                B = X[0].shape[0]
-                results = [self.transform(*[x[i] for x in X]) for i in range(B)]
-            else:
-                # X is (B, C, H, W) — apply transform independently per sample
-                B = X.shape[0]
-                results = [self.transform(X[i]) for i in range(B)]
+            # Batch-wise Foveation
+            if (
+                self.foveation is not None
+                and isinstance(targets, dict)
+                and "gaze" in targets
+            ):
+                if (
+                    not self._foveation_debug_printed
+                    and (not dist.is_available()
+                        or not dist.is_initialized()
+                        or dist.get_rank() == 0)
+                ):
+                    print("\n[FOVEATION DEBUG] Pretraining foveation is ACTIVE on GPU\n")
+                    self._foveation_debug_printed = True
+                img_batches = [
+                    self.foveation(imgs, gaze, sal)
+                    for imgs, gaze, sal in zip(
+                        img_batches,
+                        targets["gaze"],
+                        targets["sal"],
+                    )
+                ]
 
-            # results: list of B items, each a list of num_crops tensors (C, H, W)
-            # transpose to: list of num_crops tensors, each (B, C, H, W)
+            B = img_batches[0].shape[0]
+
+            results = [self.transform(*[imgs[i] for imgs in img_batches]) for i in range(B)]
             X = [torch.stack([results[i][j] for i in range(B)]) for j in range(len(results[0]))]
-
-            return idx, X, targets
-
+            return idx, X, -1
+        
         return batch
 
     def forward(self, X) -> Dict:

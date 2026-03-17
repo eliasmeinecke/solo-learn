@@ -2,14 +2,13 @@
 from PIL import Image
 import pandas as pd
 import numpy as np
-from foveation.methods.base import Foveation
 
 
-class GazeCenteredCrop(Foveation):
+class GazeCenteredCrop():
     def __init__(self, crop_size=336):
         self.N = crop_size
 
-    def __call__(self, img: Image.Image, annot: pd.Series, saliency: np.ndarray) -> Image.Image:
+    def __call__(self, img: Image.Image, annot: pd.Series) -> Image.Image:
         w, h = img.size
         x_g, y_g = annot.gaze_loc_x, annot.gaze_loc_y
 

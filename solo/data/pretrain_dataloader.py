@@ -315,16 +315,25 @@ def prepare_n_crop_transform(
     return FullTransformPipeline(T)
 
 
+class PreTransform:
+    def __init__(self, base_resize=256):
+        self.t = v2.Compose([
+            v2.Resize(
+                (base_resize, base_resize),
+                interpolation=InterpolationMode.BICUBIC,
+                antialias=True,
+            ),
+            v2.ToImage(),
+        ])
+
+    def __call__(self, img1, img2=None):
+        if img2 is None:
+            return self.t(img1)
+        return self.t(img1), self.t(img2)
+    
+
 def build_pre_transform(base_resize=256):
-    """ Transform to prepare image for batch processing (resize + to tensor) """
-    return v2.Compose([
-        v2.Resize(
-            (base_resize, base_resize),
-            interpolation=InterpolationMode.BICUBIC,
-            antialias=True,
-        ),
-        v2.ToImage(),  # ensures image type consistency
-    ])
+    return PreTransform(base_resize)
 
 
 def prepare_datasets(
