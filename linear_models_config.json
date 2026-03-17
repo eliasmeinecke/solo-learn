@@ -1,0 +1,62 @@
+[
+    {
+        "pre_trained_id": "cbg5z9s8",
+        "dataset": "imagenet10pct_42",
+        "id": "mbnwg4us"
+    },
+    {
+        "pre_trained_id": "rhtkva61",
+        "dataset": "imagenet_42",
+        "id": "1pxjvyse"
+    },
+    {
+        "pre_trained_id": "y9xhl4ce",
+        "dataset": "imagenet10pct_42",
+        "id": "go1zij4h"
+    },
+    {
+        "pre_trained_id": "rhtkva61",
+        "dataset": "imagenet1pct_42",
+        "id": "xuns8q5h"
+    },
+    {
+        "pre_trained_id": "u2ja20do",
+        "dataset": "imagenet10pct_42",
+        "id": "q7us2rcc"
+    },
+    {
+        "pre_trained_id": "u2ja20do",
+        "dataset": "imagenet_42",
+        "id": "ms2erh4f"
+    },
+    {
+        "pre_trained_id": "cbg5z9s8",
+        "dataset": "imagenet1pct_42",
+        "id": "g83fvceg"
+    },
+    {
+        "pre_trained_id": "rhtkva61",
+        "dataset": "imagenet10pct_42",
+        "id": "rr6g5p0z"
+    },
+    {
+        "pre_trained_id": "cbg5z9s8",
+        "dataset": "imagenet_42",
+        "id": "qh5dbobe"
+    },
+    {
+        "pre_trained_id": "u2ja20do",
+        "dataset": "imagenet1pct_42",
+        "id": "l3yoc0q4"
+    },
+    {
+        "pre_trained_id": "y9xhl4ce",
+        "dataset": "imagenet_42",
+        "id": "qhmtijgm"
+    },
+    {
+        "pre_trained_id": "y9xhl4ce",
+        "dataset": "imagenet1pct_42",
+        "id": "o8nyl4tc"
+    }
+]
