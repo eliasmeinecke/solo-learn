@@ -18,9 +18,10 @@ from foveation.factory import setup_exact_foveation, VALID_FOVS
 IMAGENET_PATH = Path("/pfss/mlde/workspaces/mlde_wsp_PI_Roig/shared/datasets/ImageNet/h5")
 
 # ===============================================
-# VERY IMPORTANT: set OUT_PATH correctly!
+# VERY IMPORTANT: set JSON & OUT_PATH correctly!
 # ===============================================
 OUT_PATH = Path("/tims/output/path")
+JSON_PATH = Path("/tims/json/path/")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -31,6 +32,10 @@ def build_foveated_imagenet(foveation, split, out_dir_suffix, max_images=None):
     out_dir.mkdir(parents=True, exist_ok=True)
 
     out_path = out_dir / f"{split}.h5"
+    
+    json_path = JSON_PATH / f"imagenet_{split}_masks_with_center.json"
+    if not json_path.exists():
+        raise FileNotFoundError(f"JSON not found: {json_path}")
 
     if out_path.exists():
         print(f"[Dataset] {out_path} already exists.")
@@ -59,8 +64,6 @@ def build_foveated_imagenet(foveation, split, out_dir_suffix, max_images=None):
         dataset_size = min(dataset_size, max_images)
 
     dtype = h5py.vlen_dtype(np.dtype("uint8"))
-
-    json_path = f"/home/data/elias/imagenet_sam_masks/imagenet_{split}_masks_with_center.json"
 
     with open(json_path) as f:
         gaze_data = json.load(f)
