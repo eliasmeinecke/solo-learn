@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - wandb: private.yaml
+  - wandb: testing.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
@@ -10,13 +10,13 @@ hydra:
   run:
     dir: .
 
-name: "gpu-blur-linear-eval-test"
+name: "gaze-imagenet-blur-test"
 pretrained_feature_extractor: "/home/data/elias/trained_models/mocov3/vbmqs45d/gpu-blur-test1-vbmqs45d-ep=1.ckpt"
 backbone:
   name: "resnet50"
 pretrain_method: "mocov3"
 data:
-  dataset: imagenet100
+  dataset: gaze_imagenet100
   train_path: "/home/data/elias/imagenet100/train"
   val_path: "/home/data/elias/imagenet100/val"
   format: "image_folder"
@@ -44,8 +44,8 @@ grid:
   lr: [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 3.0]
 
 # overwrite PL stuff
-max_epochs: 3
-devices: 2
+max_epochs: 5
+devices: 1
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"

@@ -39,8 +39,9 @@ from solo.utils.misc import (
     remove_bias_and_norm_from_weight_decay,
 )
 from solo.utils.multi_linear import setup_linear_classifiers
-
+from solo.data.classification_dataloader import split_spatial_and_batch_transforms
 from foveation.factory import GazePredictor
+
 
 
 class LinearModel(pl.LightningModule):
@@ -196,8 +197,11 @@ class LinearModel(pl.LightningModule):
         # GPU-side augmentation transforms (applied in on_after_batch_transfer)
         self.T_train = T_train
         self.T_val = T_val
+        self.T_train_spatial, self.T_train_batch = split_spatial_and_batch_transforms(self.T_train)
+        self.T_val_spatial, self.T_val_batch = split_spatial_and_batch_transforms(self.T_val)
         self.foveation = foveation
         self.gaze_predictor = GazePredictor()
+        self._tf_debug_printed = False
         self._foveation_debug_printed = False
 
         # keep track of validation metrics
@@ -338,7 +342,6 @@ class LinearModel(pl.LightningModule):
         return [optimizer], [scheduler]
 
 
-
     def on_after_batch_transfer(self, batch, dataloader_idx):
         """Apply GPU-side augmentation / normalisation after the batch is on device."""
         X, targets = batch
@@ -357,6 +360,7 @@ class LinearModel(pl.LightningModule):
         if transform is not None:
             X = torch.stack([transform(X[i]) for i in range(X.shape[0])])
         return X, targets
+
 
     def forward_backbone(self, X: torch.Tensor) -> torch.Tensor:
         return self.backbone(X)

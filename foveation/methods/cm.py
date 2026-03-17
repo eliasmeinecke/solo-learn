@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class CortalMagnification(nn.Module):
+class CorticalMagnification(nn.Module):
     def __init__(self, fov_ratio=0.3125, K_ratio=0.208, saliency_beta=0.0):
         super().__init__()
         self.fov_ratio = fov_ratio
@@ -24,7 +24,7 @@ class CortalMagnification(nn.Module):
         B, C, H, W = img.shape
         img = img.float()
         
-        if self.saliency_beta != 0:
+        if (self.saliency_beta != 0) and (saliency is not None):
             # ensure saliency matches image size & normalize
             if saliency.shape[-2:] != (H, W):
                 saliency = F.interpolate(
@@ -57,7 +57,7 @@ class CortalMagnification(nn.Module):
 
         r = torch.sqrt(dx**2 + dy**2 + 1e-6)
 
-        if self.saliency_beta != 0:
+        if (self.saliency_beta != 0) and (saliency is not None):
             mean_r = torch.sum(saliency * r, dim=(1, 2), keepdim=True)
             mean_r2 = torch.sum(saliency * r**2, dim=(1, 2), keepdim=True)
 
@@ -72,7 +72,7 @@ class CortalMagnification(nn.Module):
         fov = self.fov_ratio * base_size
         K = self.K_ratio * base_size
         
-        if self.saliency_beta != 0:
+        if (self.saliency_beta != 0) and (saliency is not None):
             fov = fov * (1.0 + self.saliency_beta * spread_norm)
 
         # radial transform

@@ -1,0 +1,65 @@
+defaults:
+  - paths: 42_cluster
+  - _self_
+  - wandb: private.yaml
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+seed: 0
+# disable hydra outputs
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+name: "gaze-imagenet-(insert-type)"
+pretrained_feature_extractor: "(insert-checkpoint)"
+
+backbone:
+  name: "resnet50"
+method: "mocov3"
+pretrain_method: "mocov3"
+
+data:
+  dataset: gaze_imagenet
+  train_path: ${paths.data_train_path}
+  val_path: ${paths.data_val_path}
+  num_workers: 8
+optimizer:
+  name: "sgd"
+  batch_size: 128
+  lr: 0.1
+  weight_decay: 0
+  momentum: 0.9
+scheduler:
+  name: "warmup_cosine"
+  warmup_start_lr: 0.00001
+  warmup_epochs: 0
+  max_epochs: 100
+  interval: "epoch"
+checkpoint:
+  enabled: False
+  dir: ${paths.checkpoint_dir}
+  frequency: 1
+auto_resume:
+  enabled: False
+early_stopping:
+  enabled: False
+  patience: 5
+  monitor: "val_acc1"
+  mode: "max"
+
+
+finetune: False
+grid:
+  enabled: True
+  lr: [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 3.0]
+
+# overwrite PL stuff
+max_epochs: 100
+devices: 4
+sync_batchnorm: True
+accelerator: "gpu"
+strategy: "ddp"
+precision: 16-mixed
+log_every_n_steps: 50
