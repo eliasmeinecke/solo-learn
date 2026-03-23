@@ -45,6 +45,10 @@ model_storage*/
 lightning_logs/
 
 *.json
+!best_classifiers.json
+!imagenet_class_index.json
+!linear_models_config.json
+!trained_models_config.json
 
 *logs*/
 *output*/

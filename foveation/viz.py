@@ -14,15 +14,17 @@ from types import SimpleNamespace
 import torch
 import torchvision.transforms.functional as TF
 from torchvision.transforms.functional import pil_to_tensor
+import torchvision.transforms.v2 as v2
 from pycocotools import mask as mask_util
 
 from torchvision.datasets import ImageFolder
-from solo.data.classification_dataloader import prepare_datasets
 
-from foveation.factory import GazePredictor
+from foveation.factory import GazePredictor, setup_exact_foveation
 from foveation.methods.gaze_crop import GazeCenteredCropGPU
 from foveation.methods.radial_blur import RadialBlurFoveation
 from foveation.methods.cm import CorticalMagnification, radial_quadratic_batch
+
+from foveation.ooc.ooc_data import OOCOriginalDataset, OOCInpaintedDataset, OOCObjectOnlyDataset, OOCShuffledDataset
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -50,8 +52,10 @@ def main():
     
     # viz_fov(samples, method="blur")
     # viz_imagenet_mask_samples(4)
-    viz_imagenet_fov_samples(3, remove_padding_bool=True)
-    viz_imagenet_fov_samples(3, remove_padding_bool=False)
+    viz_ooc_datasets(foveation="cm-nosal")
+    #viz_imagenet_fov_samples(3, remove_padding_bool=True)
+    #viz_imagenet_fov_samples(3, remove_padding_bool=False)
+    
     
     # needs changing after gpu-switch:
     # viz_cm_saliency_effect(samples)
@@ -540,7 +544,7 @@ def viz_imagenet_fov_samples(n, remove_padding_bool):
     cm_fov = CorticalMagnification()
     val_ds = ImageFolder("/home/data/ILSVRC_real/val", transform=None)
 
-    json_path = "/home/data/elias/imagenet_sam_masks/imagenet_val_masks_with_center.json"
+    json_path = "/home/data/elias/imagenet_sam_masks/imagenet_val_gaze_only.json"
 
     with open(json_path, "r") as f:
         json_data = json.load(f)
@@ -642,7 +646,7 @@ def viz_imagenet_mask_samples(n):
     
     val_ds = ImageFolder("/home/data/ILSVRC_real/val", transform=None)
 
-    json_path = "/home/data/elias/imagenet_sam_masks/imagenet_val_masks_with_center.json"
+    json_path = "/home/data/elias/imagenet_sam_masks/imagenet_val_gaze_only.json"
         
     with open(json_path, "r") as f:
         json_data = json.load(f)
@@ -739,6 +743,90 @@ def viz_imagenet_mask_samples(n):
         plt.close()
         print(f"Saved {save_name}")
 
+
+def viz_ooc_datasets(n_samples=3, foveation=None):
+
+    root = Path("/home/data/elias/ImageNet-OOC1k_flattened")
+
+    T_pre = v2.Compose([
+        v2.Resize(540),
+        v2.ToImage(),
+        v2.ToDtype(torch.uint8)
+    ])
+
+    common_kwargs = dict(
+        root=root,
+        transform=T_pre,
+    )
+    
+    datasets_dict = {
+        "original": OOCOriginalDataset(**common_kwargs), 
+        "inpainted": OOCInpaintedDataset(**common_kwargs), 
+        "object": OOCObjectOnlyDataset(**common_kwargs), 
+        "shuffle": OOCShuffledDataset(**common_kwargs)
+    }
+    
+    if foveation:
+        foveation = setup_exact_foveation(foveation)
+    
+    dataset_names = list(datasets_dict.keys())
+    num_datasets = len(dataset_names)
+
+    fig, axes = plt.subplots(
+        n_samples,
+        num_datasets,
+        figsize=(3*num_datasets, 3*n_samples)
+    )
+
+    indices = random.sample(range(len(next(iter(datasets_dict.values())))), n_samples)
+
+    for row, idx in enumerate(indices):
+
+        for col, name in enumerate(dataset_names):
+
+            dataset = datasets_dict[name]
+
+            img, label, gaze = dataset[idx]
+
+            if torch.is_tensor(img):
+                img_np = img.permute(1,2,0).cpu().numpy()
+            else:
+                img_np = np.array(img)
+
+            H, W = img_np.shape[:2]
+
+            gx = gaze[0].item() * W
+            gy = gaze[1].item() * H
+
+            # optional foveation
+            if foveation is not None:
+                img_tensor = torch.tensor(img_np).permute(2,0,1).unsqueeze(0).float()
+                gaze_abs = torch.tensor([[gx, gy]])
+
+                with torch.no_grad():
+                    img_fov = foveation(img_tensor, gaze_abs, None)
+
+                img_np = img_fov.squeeze(0).permute(1,2,0).cpu().numpy().astype(np.uint8)
+
+            ax = axes[row, col] if n_samples > 1 else axes[col]
+
+            ax.imshow(img_np)
+            ax.scatter(gx, gy, c="red", s=30)
+
+            ax.set_title(f"{name}\nlabel={label}")
+            ax.axis("off")
+
+    plt.tight_layout()
+    
+    save_name=f"ooc_example.png"
+    base_dir = Path(__file__).resolve().parent
+    out_path = base_dir / "plots" / "ooc" / save_name
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=200)
+    plt.close()
+    print(f"Saved {save_name}")
+    
 
 def load_sample(i):
     ANNOT_PATH = "/home/data/elias/Ego4dDivSubset/annot.parquet"
