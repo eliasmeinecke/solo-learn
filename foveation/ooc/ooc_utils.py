@@ -41,20 +41,17 @@ def load_data(dataset_name):
         transform=T_pre
     )
 
-    if dataset_name == "original":
-        dataset = OOCOriginalDataset(**common_kwargs)
+    dataset_map = {
+        "original": OOCOriginalDataset,
+        "inpainted": OOCInpaintedDataset,
+        "object": OOCObjectOnlyDataset,
+        "ooc": OOCShuffledDataset,
+    }
 
-    elif dataset_name == "inpainted":
-        dataset = OOCInpaintedDataset(**common_kwargs)
-
-    elif dataset_name == "object":
-        dataset = OOCObjectOnlyDataset(**common_kwargs)
-
-    elif dataset_name == "ooc":
-        dataset = OOCShuffledDataset(**common_kwargs)
-
-    else:
+    if dataset_name not in dataset_map:
         raise ValueError(dataset_name)
+
+    dataset = dataset_map[dataset_name](**common_kwargs)
 
     return DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4)
     
@@ -204,7 +201,7 @@ def load_model(model_name):
     head = load_linear_head(linear_ckpt, model_cfg["id"])
 
     print(f"[Model] Backbone: {model_cfg['name']}")
-    print(f"[Model] Linear head: {linear_cfg['id']}")
+    print(f"[Model] Linear head trained on: {linear_cfg['dataset']}")
 
     model = FullModel(backbone, head)
     model.eval()
