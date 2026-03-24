@@ -28,6 +28,7 @@ if __name__ == '__main__':
         with open(linear_p / "args.json", "r") as f:
             args = json.load(f)
             idx = Path(args['pretrained_feature_extractor']).parent.name
+
             dataset = args['data']['dataset']
 
             if idx in keep_pre_trained_models:

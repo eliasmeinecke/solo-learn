@@ -23,6 +23,7 @@ _N_CLASSES_PER_DATASET = {
     "cifar100_224": 100,
     "stl10": 10,
     "imagenet": 1000,
+    "gaze_imagenet": 1000,
     "imagenet100": 100,
     "imagenet100_42": 100,
     "imagenet1pct_42": 1000,
@@ -206,10 +207,11 @@ def parse_cfg(cfg: omegaconf.DictConfig):
     else:
         # hack to maintain the current pipeline
         # even if the custom dataset doesn't have any labels
-        cfg.data.num_classes = max(
-            1,
-            sum(entry.is_dir() for entry in os.scandir(cfg.data.train_path)),
-        )
+        # cfg.data.num_classes = max(
+        #     1,
+        #     sum(entry.is_dir() for entry in os.scandir(cfg.data.train_path)),
+        # )
+        raise ValueError("Class number cannot be inferred from dataset name.")
 
     if cfg.data.format == "dali":
         assert cfg.data.dataset in ["imagenet100", "imagenet", "custom"]

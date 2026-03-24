@@ -82,6 +82,7 @@ class ImgNetDataset_42(H5ClassificationDataset):
             subset: Optional[str] = None
     ):
         super().__init__(root, transform, split, driver="core" if split == "train" and subset is not None else None)
+        self.n_classes = 1000
         if subset == '1pct' and split == "train":
             subset_df = pd.read_csv("solo/data/dataset_subset/imagenet_1percent.txt", names=['filename'])
             self.mapper = self.mapper.query("filename.isin(@subset_df.filename)").copy().reset_index(drop=True)
@@ -98,9 +99,10 @@ class ImgNetDataset_42(H5ClassificationDataset):
 
             self.mapper = self.mapper.query('wn_name in @imgnet100_classes').reset_index(drop=True)
             self.mapper['target'] = self.mapper['wn_name'].apply(lambda x: imgnet100_class_wn_2_class_index[x])
+            self.n_classes = 100
 
-        self.n_classes = self.mapper['target'].nunique()
-        self.target_2_class_name = self.mapper[['target', 'class_name']].drop_duplicates().set_index('target')[
+        if self.mapper is not None:
+            self.target_2_class_name = self.mapper[['target', 'class_name']].drop_duplicates().set_index('target')[
             'class_name'].to_dict()
 
 

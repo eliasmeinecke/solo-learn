@@ -9,7 +9,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--ckpt', type=str, default="trained_models_config.json")
     parser.add_argument('--env', type=str, default="42")
-    parser.add_argument('--devices', type=int, default=4)
+    parser.add_argument('--devices', type=int, default=8)
     parser.add_argument('--epoch', type=str, default="last")
     args = parser.parse_args()
 
@@ -21,22 +21,23 @@ if __name__ == '__main__':
         raise NotImplemented(f"env {args.env} not implemented")
 
     datasets = [
-        'imagenet_42',
-        'imagenet100_42',
-        'cifar100_224',
-        'cifar10_224',
-        'COIL100',
-        'DTD',
-        'Flowers102',
-        'FGVCAircraft',
-        'OxfordIIITPet',
-        'StanfordCars',
-        'STL10_224',
-        'SUN397_h5'
-        'toybox',
-        'core50',
-        'imagenet1pct_42',
-        'imagenet10pct_42',
+        'gaze_imagenet',
+        # 'imagenet_42',
+        # 'imagenet100_42',
+        # 'cifar100_224',
+        # 'cifar10_224',
+        # 'COIL100',
+        # 'DTD',
+        # 'Flowers102',
+        # 'FGVCAircraft',
+        # 'OxfordIIITPet',
+        # 'StanfordCars',
+        # 'STL10_224',
+        # 'SUN397_h5'
+        # 'toybox',
+        # 'core50',
+        # 'imagenet1pct_42',
+        # 'imagenet10pct_42',
     ]
 
     job_type = "linear_probe_grid"
@@ -56,7 +57,7 @@ if __name__ == '__main__':
             devices = args.devices
             bs = 128
 
-        store_ckpt = True if dataset in ['imagenet_42', 'Places365_h5', "imagenet1pct_42", "imagenet10pct_42"] else False
+        store_ckpt = True if dataset in ['imagenet_42', 'Places365_h5', "imagenet1pct_42", "imagenet10pct_42", "gaze_imagenet"] else False
 
         for i, row in meta.iterrows():
             name = ("debug" + '_'  + dataset + '_' + row['model_name']).replace("=", "\=")
