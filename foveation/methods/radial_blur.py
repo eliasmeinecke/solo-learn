@@ -16,7 +16,7 @@ class RadialBlurFoveation(nn.Module):
         self.register_buffer("_grid_x", None, persistent=False)
         self._grid_size = None
 
-    def forward(self, img, gaze, saliency):
+    def forward(self, img, gaze, saliency=None):
         """
         img:       (B, C, H, W) uint8 tensor
         gaze:      (B, 2) tensor with (x, y)

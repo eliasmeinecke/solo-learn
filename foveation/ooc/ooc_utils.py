@@ -105,31 +105,57 @@ def load_mocov3_model(ckpt_path):
 def find_linear_head(pretrained_id):
     matches = [
         x for x in LINEAR_CONFIGS
-        if x["pre_trained_id"] == pretrained_id and x["dataset"] == "imagenet_42"
+        if x["pre_trained_id"] == pretrained_id
     ]
 
     if len(matches) == 0:
-        raise ValueError(f"No linear head for {pretrained_id} (imagenet_42)")
+        raise ValueError(f"No linear head for {pretrained_id}")
 
-    if len(matches) > 1:
-        print("[WARNING] Multiple heads found, taking first")
+    # gaze_imagenet > imagenet_42 (could be left out now but just to be sure)
+    preferred_order = ["gaze_imagenet", "imagenet_42"]
 
+    for dataset_name in preferred_order:
+        for m in matches:
+            if m["dataset"] == dataset_name:
+                return m
+
+    # fallback if new linear heads are added
+    print("[WARNING] No preferred dataset found, taking first available")
     return matches[0]
 
 
-def get_linear_ckpt_path(linear_cfg, model_cfg):
+
+def get_linear_ckpt_path(linear_cfg):
     linear_id = linear_cfg["id"]
-    model_name = model_cfg["name"]
 
     base = Path("/home/data/elias/linear_extracted/linear")
+    run_dir = base / linear_id
 
-    ckpt = base / linear_id / f"debug_imagenet_42_{model_name}-{linear_id}-ep=last.ckpt"
-    # have to check for debug and no debug prefix for later!!
+    if not run_dir.exists():
+        raise FileNotFoundError(f"Run dir not found: {run_dir}")
 
-    if not ckpt.exists():
-        raise FileNotFoundError(ckpt)
+    ckpts = list(run_dir.glob("*-ep=last.ckpt"))
 
-    return ckpt
+    if len(ckpts) == 0:
+        raise FileNotFoundError(f"No checkpoint found in {run_dir}")
+
+    if len(ckpts) > 1:
+        print(f"[WARNING] Multiple checkpoints found in {run_dir}, taking first")
+
+    ckpt_path = ckpts[0]
+
+    # get clean name for debug printing
+    # remove .ckpt
+    name = ckpt_path.stem  
+
+    # remove "-ep=last"
+    name = name.replace("-ep=last", "")
+
+    # remove "-<id>"
+    if name.endswith(f"-{linear_id}"):
+        name = name[: -(len(linear_id) + 1)]
+
+    return ckpt_path, name
 
 
 def find_key(state_dict, target):
@@ -143,10 +169,12 @@ def load_linear_head(ckpt_path, pretrained_id):
     ckpt = torch.load(ckpt_path, map_location="cpu")
     state_dict = ckpt["state_dict"]
 
-    best_key = BEST_CLASSIFIERS[pretrained_id]
+    # best_key = BEST_CLASSIFIERS[pretrained_id]
+    # bias_suffix = f"{best_key}.linear.bias"
 
-    weight_suffix = f"{best_key}.linear.weight"
-    bias_suffix   = f"{best_key}.linear.bias"
+    # has to be changed if light-versions of foveations peak at different learning rate!
+    weight_suffix = "classifier-lr_2:00000000.linear.weight"
+    bias_suffix = "classifier-lr_2:00000000.linear.bias"
 
     weight_key = find_key(state_dict, weight_suffix)
     bias_key   = find_key(state_dict, bias_suffix)
@@ -197,11 +225,11 @@ def load_model(model_name):
 
     # linear head
     linear_cfg = find_linear_head(model_cfg["id"])
-    linear_ckpt = get_linear_ckpt_path(linear_cfg, model_cfg)
+    linear_ckpt, linear_name = get_linear_ckpt_path(linear_cfg)
     head = load_linear_head(linear_ckpt, model_cfg["id"])
 
     print(f"[Model] Backbone: {model_cfg['name']}")
-    print(f"[Model] Linear head trained on: {linear_cfg['dataset']}")
+    print(f"[Model] Linear head: {linear_name}")
 
     model = FullModel(backbone, head)
     model.eval()

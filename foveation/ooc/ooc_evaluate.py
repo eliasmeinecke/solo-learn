@@ -102,9 +102,9 @@ def main():
 
         return
 
-    device = "cpu"  # if all gpus are busy again... 
     # device = "cuda" if torch.cuda.is_available() else "cpu"
-
+    device = "cpu"  # CHANGE THIS! just set because no free GPUs at the moment
+    
     # model
     model = load_model(args.model).to(device)
 
