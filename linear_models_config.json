@@ -28,5 +28,15 @@
         "pre_trained_id": "y9xhl4ce",
         "dataset": "imagenet_42",
         "id": "qhmtijgm"
+    },
+    {
+        "pre_trained_id": "p6kjtoq4",
+        "dataset": "gaze_imagenet",
+        "id": "s6kvtl4p"
+    },
+    {
+        "pre_trained_id": "8c7hvt4u",
+        "dataset": "gaze_imagenet",
+        "id": "tnq9r15w"
     }
 ]
