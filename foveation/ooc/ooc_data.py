@@ -33,7 +33,7 @@ class OOCDatasetBase(Dataset):
             H, W = mask.shape
 
             if cx is None:
-                cx, cy = W / 2, H / 2  # fallback
+                cx, cy = 1 / 2, 1 / 2  # fallback
 
             gaze = (cx / W, cy / H)
 

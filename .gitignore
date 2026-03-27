@@ -55,6 +55,8 @@ lightning_logs/
 !foveation/analysis/outputs/
 !foveation/analysis/outputs/**
 
+foveation/ooc/debug_plots
+
 .hydra
 
 # Created by https://www.gitignore.io/api/python,visualstudiocode

@@ -169,10 +169,11 @@ def load_linear_head(ckpt_path, pretrained_id):
     ckpt = torch.load(ckpt_path, map_location="cpu")
     state_dict = ckpt["state_dict"]
 
+    # uncomment this if linear heads peak at different learning rate!
     # best_key = BEST_CLASSIFIERS[pretrained_id]
+    # weight_suffix = f"{best_key}.linear.weight"
     # bias_suffix = f"{best_key}.linear.bias"
-
-    # has to be changed if light-versions of foveations peak at different learning rate!
+    
     weight_suffix = "classifier-lr_2:00000000.linear.weight"
     bias_suffix = "classifier-lr_2:00000000.linear.bias"
 
