@@ -3,7 +3,8 @@ from pathlib import Path
 from .collect import collect_wandb
 from .utils import (
     save_data,
-    extract_foveation_type, 
+    extract_foveation_type,
+    extract_exact_foveation_type, 
     add_dataset_category, 
     clean_dataset_names
 )
@@ -166,7 +167,55 @@ def collect_linear_eval():
     save_data(df, "linear_eval_processed")
 
 
+def collect_gaze_imagenet_eval():
+    df = collect_wandb(
+        filters={
+            "$and": [
+                {"group": "final"},
+                {"jobType": "gaze_linear_eval"},
+                {"state": "finished"}
+            ]
+        }
+    )
+
+    # keep only gpu aug runs
+    df = df[df["name"].str.contains("gpu-aug")]
+
+    # keep newest run if duplicates exist
+    df = df.sort_values("created_at")
+    df = df.drop_duplicates(subset="name", keep="last")
+    
+    # dataset extraction
+    df["dataset"] = df["name"].apply(lambda x: x.split("_")[0])
+    df = clean_dataset_names(df)
+
+    # foveation parsing
+    df = extract_exact_foveation_type(df)
+
+    # Linear Eval Accuracy Columns
+    acc_cols = [
+        c for c in df.columns
+        if "max/val/classifier-lr_" in c and "_acc1" in c
+    ]
+
+    # best LR result
+    df["linear_acc1_best"] = df[acc_cols].max(axis=1)
+
+    df = df[[
+        "name",
+        "id",
+        "dataset",
+        "foveation",
+        "linear_acc1_best"
+    ]]
+
+    df = df.sort_values(["dataset", "foveation"])
+
+    save_data(df, "gaze_linear_eval_processed")
+
+
 if __name__ == "__main__":
     print("-------------------------------------------------------------------------------")
+    collect_gaze_imagenet_eval()
     #collect_pretrain()
     #collect_linear_eval()

@@ -13,6 +13,8 @@ DATASET_RENAME = {
     "imagenet1pct": "ImageNet-1k 1%",
     "imagenet100": "ImageNet-100",
     "core50": "Core50",
+    "toybox": "ToyBox",
+    "gaze": "Foveated Imagenet"
 }
 
 DATASET_CATEGORIES = {
@@ -36,6 +38,7 @@ DATASET_CATEGORIES = {
     # Instance recognition
     "COIL100": "Instance recognition",
     "Core50": "Instance recognition",
+    "ToyBox": "Instance recognition"
 }
 
 DATASET_ORDER = [
@@ -51,16 +54,16 @@ DATASET_ORDER = [
     "OxfordIIITPet",
     "StanfordCars",
     "COIL100",
-    "Core50"
+    "Core50",
+    "ToyBox",
+    "Foveated Imagenet"
 ]
 
 FOVEATION_ORDER = [
-    "baseline",
+    "base",
     "crop",
-    "blur (no sal)",
-    "blur (sal)",
-    "cm (no sal)",
-    "cm (sal)"
+    "blur",
+    "cm"
 ]
 
 DATASET_RENAME_LATEX = {
@@ -113,22 +116,46 @@ def set_thesis_style():
 
 
 def extract_foveation_type(df):
-    def parse_name(name):
+    def parse(name):
+        if "blur-nosal" in name:
+            return "blur"
+        if "cm-nosal" in name:
+            return "cm"
+        # ignore saliency variants
+        if "blur-sal" in name or "cm-sal" in name:
+            return None
         if "crop" in name:
             return "crop"
-        elif "blur" in name:
-            if "nosal" in name:
-                return "blur (no sal)"
-            return "blur (sal)"
-        elif "cm" in name:
-            if "nosal" in name:
-                return "cm (no sal)"
-            return "cm (sal)"
-        return "baseline"
-
-    df["foveation"] = df["name"].apply(parse_name)
+        if "base" in name:
+            return "base"
+        return None
+    df["foveation"] = df["name"].apply(parse)
+    df = df[df["foveation"].notna()]
     return df
 
+
+def extract_exact_foveation_type(df):
+    def parse(name):
+        if "blur-light" in name:
+            return "blur-light"
+        if "blur-nosal" in name:
+            return "blur"
+        if "blur-strong" in name:
+            return "blur-strong"
+        if "cm-light" in name:
+            return "cm-light"
+        if "cm-nosal" in name:
+            return "cm"
+        if "cm-strong" in name:
+            return "cm-strong"
+        if "crop" in name:
+            return "crop"
+        if "base" in name:
+            return "base"
+        return None
+    df["foveation"] = df["name"].apply(parse)
+    df = df[df["foveation"].notna()]
+    return df
 
 def add_dataset_category(df):
     df["category"] = df["dataset"].map(DATASET_CATEGORIES)

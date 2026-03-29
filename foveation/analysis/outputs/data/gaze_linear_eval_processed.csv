@@ -1,0 +1,8 @@
+name,id,dataset,foveation,linear_acc1_best
+gaze_imagenet_mocov3-ego4d-blur-nosal-gpu-aug,e36wik4c,Foveated Imagenet,blur,43.56399917602539
+gaze_imagenet_mocov3-ego4d-blur-light-gpu-aug,tnq9r15w,Foveated Imagenet,blur-light,44.5
+gaze_imagenet_mocov3-ego4d-blur-strong-gpu-aug,mir57it7,Foveated Imagenet,blur-strong,43.20399475097656
+gaze_imagenet_mocov3-ego4d-cm-nosal-gpu-aug,a54fg61o,Foveated Imagenet,cm,45.3599967956543
+gaze_imagenet_mocov3-ego4d-cm-light-gpu-aug,s6kvtl4p,Foveated Imagenet,cm-light,43.55999755859375
+gaze_imagenet_mocov3-ego4d-cm-strong-gpu-aug,pquyuw8t,Foveated Imagenet,cm-strong,46.51799774169922
+gaze_imagenet_mocov3-ego4d-crop-gpu-aug,tmwxsijy,Foveated Imagenet,crop,45.40399932861328

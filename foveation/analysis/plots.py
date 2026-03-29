@@ -71,7 +71,7 @@ def plot_lr_sweep_knn_mean():
 
     ax.legend(title=None, frameon=False)
 
-    out_path = FIG_DIR / "lr_sweep_knn_mean.pdf"
+    out_path = FIG_DIR / "lr_sweep" / "lr_sweep_knn_mean.pdf"
     plt.tight_layout()
     plt.savefig(out_path, bbox_inches="tight")
     plt.close()
@@ -122,55 +122,9 @@ def plot_knn_mean(metric="top1"):
 
     plt.grid(axis="y", linestyle="--", alpha=0.4)
 
-    out_path = FIG_DIR / f"knn_mean_{metric}.pdf"
+    out_path = FIG_DIR / "central_knn" /f"knn_mean_{metric}.pdf"
 
     plt.tight_layout()
-    plt.savefig(out_path, bbox_inches="tight")
-    plt.close()
-
-    print(f"Saved figure → {out_path}")
-    
-    
-def plot_knn_vs_k():
-
-    df = load_analysis_data("pretrain_processed")
-
-    ks = [10, 20, 50, 100]
-
-    rows = []
-    for _, row in df.iterrows():
-        for k in ks:
-            rows.append({
-                "foveation": row["foveation"],
-                "k": k,
-                "top1": row[f"knn_top1_k{k}"],
-                "top5": row[f"knn_top5_k{k}"],
-            })
-
-    plot_df = pd.DataFrame(rows)
-
-    plt.figure(figsize=(7,5))
-
-    sns.lineplot(
-        data=plot_df,
-        x="k",
-        y="top1",
-        hue="foveation",
-        marker="o",
-        linewidth=2,
-        markersize=7,
-        palette="colorblind"
-    )
-
-    plt.xlabel("Number of Neighbors (k)")
-    plt.ylabel("kNN Top-1 Accuracy (%)")
-    plt.title("Feature Quality vs k")
-
-    plt.grid(True, linestyle="--", alpha=0.4)
-
-    plt.tight_layout()
-
-    out_path = FIG_DIR / "knn_vs_k_top1.pdf"
     plt.savefig(out_path, bbox_inches="tight")
     plt.close()
 
@@ -212,14 +166,14 @@ def plot_linear_eval_heatmap():
         values,
         annot=annot,
         fmt="",
-        cmap="cividis",
+        cmap="viridis",
         linewidths=0.5,
         cbar_kws={"label": "Linear-Probe Accuracy (%)"},
         annot_kws={"size":10}
     )
 
     ax.set_xticklabels(
-        ["baseline","crop","blur\n(no sal)","blur\n(sal)","cm\n(no sal)","cm\n(sal)"],
+        ["base","crop","blur","cm"],
         rotation=0
     )
     ax.set_yticklabels(datasets, rotation=0)
@@ -241,7 +195,7 @@ def plot_linear_eval_heatmap():
         ax.axhline(y, color="white", lw=4)
 
     plt.tight_layout()
-    out_path = FIG_DIR / "linear_eval_heatmap.pdf"
+    out_path = FIG_DIR / "central_linear_eval" / "linear_eval_heatmap.pdf"
     plt.savefig(out_path, bbox_inches="tight")
     plt.close()
     print(f"Saved figure → {out_path}")
@@ -261,11 +215,11 @@ def plot_delta_to_baseline():
 
     table = table[FOVEATION_ORDER]
 
-    baseline = table["baseline"]
+    baseline = table["base"]
 
     delta = table.subtract(baseline, axis=0)
 
-    delta = delta.drop(columns=["baseline"])
+    delta = delta.drop(columns=["base"])
 
     datasets = delta.index.get_level_values("dataset")
     values = delta.values
@@ -283,7 +237,7 @@ def plot_delta_to_baseline():
     )
 
     ax.set_xticklabels(
-        ["crop","blur\n(no sal)","blur\n(sal)","cm\n(no sal)","cm\n(sal)"],
+        ["crop","blur","cm"],
         rotation=0
     )
     ax.set_yticklabels(datasets, rotation=0)
@@ -294,7 +248,7 @@ def plot_delta_to_baseline():
 
     plt.tight_layout()
 
-    out_path = FIG_DIR / "linear_eval_delta.pdf"
+    out_path = FIG_DIR / "central_linear_eval" / "linear_eval_delta.pdf"
     plt.savefig(out_path, bbox_inches="tight")
     plt.close()
 
@@ -311,7 +265,7 @@ def plot_category_deltas():
         .reset_index()
     )
 
-    baseline = avg[avg["foveation"] == "baseline"][
+    baseline = avg[avg["foveation"] == "base"][
         ["category", "linear_acc1_best"]
     ].rename(columns={"linear_acc1_best": "baseline_acc"})
 
@@ -340,67 +294,7 @@ def plot_category_deltas():
 
     plt.tight_layout()
 
-    out_path = FIG_DIR / "linear_eval_category_delta.pdf"
-    plt.savefig(out_path, bbox_inches="tight")
-    plt.close()
-
-    print(f"Saved figure → {out_path}")
-    
-    
-def plot_category_winners():
-
-    df = load_analysis_data("linear_eval_processed")
-
-    # Durchschnitt pro Kategorie & Foveation
-    avg = (
-        df.groupby(["category", "foveation"])["linear_acc1_best"]
-        .mean()
-        .reset_index()
-    )
-
-    table = avg.pivot(
-        index="category",
-        columns="foveation",
-        values="linear_acc1_best"
-    )
-
-    table = table[FOVEATION_ORDER]
-
-    values = table.values
-
-    # Winner matrix (1 = best)
-    winners = np.zeros_like(values)
-
-    for i in range(values.shape[0]):
-        best = np.argmax(values[i])
-        winners[i, best] = 1
-
-    plt.figure(figsize=(7,4))
-
-    ax = sns.heatmap(
-        winners,
-        cmap=["white", "#4C72B0"],
-        cbar=False,
-        linewidths=1,
-        linecolor="black"
-    )
-
-    ax.set_xticklabels(FOVEATION_ORDER, rotation=30, ha="right")
-    ax.set_yticklabels(table.index, rotation=0)
-
-    ax.set_xlabel("Foveation Method")
-    ax.set_ylabel("")
-    ax.set_title("Best Performing Foveation per Task Category")
-
-    # optional ✓ symbol
-    for i in range(winners.shape[0]):
-        for j in range(winners.shape[1]):
-            if winners[i, j] == 1:
-                ax.text(j+0.5, i+0.5, "✓", ha="center", va="center", fontsize=16)
-
-    plt.tight_layout()
-
-    out_path = FIG_DIR / "linear_eval_winners.pdf"
+    out_path = FIG_DIR / "central_linear_eval" / "linear_eval_category_delta.pdf"
     plt.savefig(out_path, bbox_inches="tight")
     plt.close()
 
@@ -456,7 +350,7 @@ def export_linear_eval_latex():
 
     latex = "\n".join(new_lines)
 
-    out_path = FIG_DIR / "linear_eval_table.tex"
+    out_path = FIG_DIR / "central_linear_eval" / "linear_eval_table.tex"
 
     with open(out_path, "w") as f:
         f.write(latex)
@@ -466,10 +360,5 @@ def export_linear_eval_latex():
     
 if __name__ == "__main__":
     print("-------------------------------------------------------------------------------")
-    #plot_knn_mean(metric="top1")
-    #plot_knn_mean(metric="top5")
-    #plot_linear_eval_heatmap()
-    #plot_delta_to_baseline()
-    #plot_category_deltas()
-    #plot_category_winners()
-    #export_linear_eval_latex()
+    
+    #export_linear_eval_latex
