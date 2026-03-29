@@ -6,3 +6,4 @@ gaze_imagenet_mocov3-ego4d-cm-nosal-gpu-aug,a54fg61o,Foveated Imagenet,cm,45.359
 gaze_imagenet_mocov3-ego4d-cm-light-gpu-aug,s6kvtl4p,Foveated Imagenet,cm-light,43.55999755859375
 gaze_imagenet_mocov3-ego4d-cm-strong-gpu-aug,pquyuw8t,Foveated Imagenet,cm-strong,46.51799774169922
 gaze_imagenet_mocov3-ego4d-crop-gpu-aug,tmwxsijy,Foveated Imagenet,crop,45.40399932861328
+gaze_imagenet_mocov3-ego4d-base-gpu-aug,qhmtijgm,Foveated Imagenet,base,42.30400085449219

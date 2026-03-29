@@ -66,6 +66,26 @@ FOVEATION_ORDER = [
     "cm"
 ]
 
+EXACT_FOVEATION_ORDER = [
+        "base",
+        "crop",
+        "blur-light",
+        "blur",
+        "blur-strong",
+        "cm-light",
+        "cm",
+        "cm-strong",
+]
+
+FOVEATION_PALETTE = {
+    "base": "#000000",    
+    "crop": "#E69F00",     
+    "blur": "#56B4E9",     
+    "cm": "#D55E00",       
+}
+
+OOC_DATASET_ORDER = ["original", "inpainted", "object", "ooc"]
+
 DATASET_RENAME_LATEX = {
     "ImageNet-1k 100%": "ImageNet-1k 100\\%",
     "ImageNet-1k 10%": "ImageNet-1k 10\\%",
