@@ -9,14 +9,15 @@ import json
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from PIL import Image
+
 from pathlib import Path
 from types import SimpleNamespace
 import torch
 import torchvision.transforms.functional as TF
 from torchvision.transforms.functional import pil_to_tensor
 import torchvision.transforms.v2 as v2
+from torchvision.transforms import PILToTensor
 from pycocotools import mask as mask_util
-
 from torchvision.datasets import ImageFolder
 
 from foveation.factory import GazePredictor, setup_exact_foveation
@@ -25,6 +26,7 @@ from foveation.methods.radial_blur import RadialBlurFoveation
 from foveation.methods.cm import CorticalMagnification, radial_quadratic_batch
 
 from foveation.ooc.ooc_data import OOCOriginalDataset, OOCInpaintedDataset, OOCObjectOnlyDataset, OOCShuffledDataset
+from foveation.crowding import CrowdingDataset, CrowdingDatasetNotMNIST
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -52,7 +54,8 @@ def main():
     
     # viz_fov(samples, method="blur")
     # viz_imagenet_mask_samples(4)
-    viz_ooc_datasets(foveation="cm-nosal")
+    # viz_ooc_datasets(foveation="cm-nosal")
+    viz_crowding_dataset(condition="xax", foveation="blur-light")
     #viz_imagenet_fov_samples(3, remove_padding_bool=True)
     #viz_imagenet_fov_samples(3, remove_padding_bool=False)
     
@@ -646,6 +649,7 @@ def viz_imagenet_mask_samples(n):
     
     val_ds = ImageFolder("/home/data/ILSVRC_real/val", transform=None)
 
+    # should't work with this anymore!
     json_path = "/home/data/elias/imagenet_sam_masks/imagenet_val_gaze_only.json"
         
     with open(json_path, "r") as f:
@@ -821,6 +825,68 @@ def viz_ooc_datasets(n_samples=3, foveation=None):
     save_name=f"ooc_example.png"
     base_dir = Path(__file__).resolve().parent
     out_path = base_dir / "plots" / "ooc" / save_name
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=200)
+    plt.close()
+    print(f"Saved {save_name}")
+    
+    
+def viz_crowding_dataset(condition, foveation=None, n=3):
+    
+    imagenet_val_path = "/home/data/ILSVRC_real/val"
+    json_path = "/home/data/elias/imagenet_sam_masks/imagenet_val_masks_with_center.json"
+    notmnist_path = "/home/data/elias/notMNIST_small"
+
+    # dataset = CrowdingDataset(imagenet_val_path, json_path, transform=PILToTensor(), condition=condition)
+    dataset = CrowdingDatasetNotMNIST(imagenet_val_path, json_path, notmnist_path, transform=PILToTensor(), condition="xax")
+    indices = random.sample(range(len(dataset)), n)
+    
+    if foveation:
+        foveation = setup_exact_foveation(foveation)
+
+    fig, axes = plt.subplots(1, n, figsize=(4*n, 4))
+
+    if n == 1:
+        axes = [axes]
+
+    for ax, idx in zip(axes, indices):
+
+        img, label, gaze = dataset[idx]
+
+        # tensor → numpy
+        if torch.is_tensor(img):
+            img_np = img.permute(1, 2, 0).numpy()
+        else:
+            img_np = np.array(img)
+
+        H, W = img_np.shape[:2]
+
+        gx = gaze[0].item() * W
+        gy = gaze[1].item() * H
+
+        # optional foveation
+        if foveation is not None:
+            img_tensor = torch.tensor(img_np).permute(2,0,1).unsqueeze(0).float()
+            gaze_abs = torch.tensor([[gx, gy]])
+
+            with torch.no_grad():
+                img_fov = foveation(img_tensor, gaze_abs, None)
+
+            img_np = img_fov.squeeze(0).permute(1,2,0).cpu().numpy().astype(np.uint8)
+                
+        ax.imshow(img_np)
+        ax.scatter(gx, gy, c="red", s=40)
+
+        ax.set_title(f"Label: {label}")
+        ax.axis("off")
+
+    plt.suptitle(f"Crowding Condition: {dataset.condition}")
+    plt.tight_layout()
+    
+    save_name=f"crowding_example_{condition}.png"
+    base_dir = Path(__file__).resolve().parent
+    out_path = base_dir / "plots" / "crowding" / save_name
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=200)

@@ -8,10 +8,9 @@ import torch
 import torchvision.transforms.v2 as v2
 
 from foveation.factory import setup_exact_foveation
-from foveation.ooc.ooc_utils import load_data, load_model, IdentityFoveation
+from foveation.ooc.ooc_utils import load_data, load_model, IdentityFoveation, OOC_DATASETS
 
 
-DATASETS = ["original", "inpainted", "object", "ooc"]
 RESULTS_PATH = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/ooc_results.csv")
 
 
@@ -187,12 +186,12 @@ def save_results(model_name, results):
     # update / insert
     existing[model_name] = {
         "model": model_name,
-        **{d: results[d] for d in DATASETS}
+        **{d: results[d] for d in OOC_DATASETS}
     }
 
     # write full file
     with open(RESULTS_PATH, "w") as f:
-        fieldnames = ["model"] + DATASETS
+        fieldnames = ["model"] + OOC_DATASETS
         writer = csv.DictWriter(f, fieldnames=fieldnames)
 
         writer.writeheader()
@@ -211,7 +210,7 @@ def load_existing_results():
         reader = csv.DictReader(f)
         for row in reader:
             results[row["model"]] = {
-                d: float(row[d]) for d in DATASETS
+                d: float(row[d]) for d in OOC_DATASETS
             }
     return results
             
@@ -220,17 +219,21 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, default="base")
+    # possible until now: random_gaze, central_gaze (affects inpainted) & black, gray, white (affects object-only)
+    parser.add_argument("--variant", type=str, default="") 
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--save_preds", action="store_true")
     args = parser.parse_args()
 
+    model_variant = f"{args.model}__{args.variant}" if args.variant else args.model
+    
     existing_results = load_existing_results()
-    if args.model in existing_results and not args.force:
+    if model_variant in existing_results and not args.force:
 
-        print(f"\n=== Cached Results: {args.model} ===")
+        print(f"\n=== Cached Results: {model_variant} ===")
 
-        results = existing_results[args.model]
+        results = existing_results[model_variant]
 
         print("\n===== SUMMARY =====")
         for k, v in results.items():
@@ -265,18 +268,18 @@ def main():
         )
     ])
 
-    print(f"\n=== Evaluating: {args.model} ===")
+    print(f"\n=== Evaluating: {model_variant} ===")
 
     results = {}
 
-    for dataset_name in DATASETS:
+    for dataset_name in OOC_DATASETS:
 
         print(f"\n→ Dataset: {dataset_name}")
 
-        loader = load_data(dataset_name)
+        loader = load_data(dataset_name, args.variant)
 
         acc = evaluate(
-            model, loader, foveation, T_post, device, model_name=args.model, dataset_name=dataset_name, save_preds=args.save_preds, debug=args.debug
+            model, loader, foveation, T_post, device, model_name=model_variant, dataset_name=dataset_name, save_preds=args.save_preds, debug=args.debug
         )
 
         results[dataset_name] = acc
@@ -287,7 +290,7 @@ def main():
     for k, v in results.items():
         print(f"{k:10s}: {v:.4f}")
         
-    save_results(args.model, results)
+    save_results(model_variant, results)
 
 
 if __name__ == "__main__":

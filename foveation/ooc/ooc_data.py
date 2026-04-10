@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 import torch
+import random
 import pandas as pd
 import numpy as np
 import cv2
@@ -9,9 +10,10 @@ from PIL import Image
 
 
 class OOCDatasetBase(Dataset):
-    def __init__(self, root, transform=None):
+    def __init__(self, root, transform=None, gaze_mode="mask"):
         self.root = Path(root)
         self.transform = transform
+        self.gaze_mode = gaze_mode
 
         self.metadata = pd.read_csv(root / "metadata.csv")
 
@@ -27,10 +29,21 @@ class OOCDatasetBase(Dataset):
             mask_path = self.root / "masks" / mask_name
 
             mask = np.array(Image.open(mask_path).convert("L"))
-
-            cx, cy = get_gaze_from_mask(mask)
-
             H, W = mask.shape
+            
+            if self.gaze_mode == "mask":
+                cx, cy = get_gaze_from_mask(mask)
+
+            elif self.gaze_mode == "random":
+                cx = random.uniform(0, W)
+                cy = random.uniform(0, H)
+            
+            elif self.gaze_mode == "central":
+                cx, cy = W / 2, H / 2
+
+            else:
+                raise ValueError(self.gaze_mode)
+
 
             if cx is None:
                 cx, cy = 1 / 2, 1 / 2  # fallback
@@ -81,6 +94,33 @@ class OOCInpaintedDataset(OOCDatasetBase):
     
     
 class OOCObjectOnlyDataset(OOCDatasetBase):
+    def __init__(self, *args, background="imagenet", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.background = background
+        
+    def create_background(self, img):
+
+        H, W, _ = img.shape
+
+        if self.background == "imagenet":
+            imagenet_mean = np.array([0.485, 0.456, 0.406]) * 255
+            background = np.ones_like(img, dtype=np.float32)
+            for c in range(3):
+                background[..., c] *= imagenet_mean[c]
+            return background
+
+        elif self.background == "gray":
+            return np.ones_like(img) * 127
+        
+        elif self.background == "white":
+            return np.ones_like(img) * 255
+
+        elif self.background == "black":
+            return np.zeros_like(img)
+
+        else:
+            raise ValueError(self.background)
+    
     def load_image(self, sample):
         img_path = self.root / "original" / sample["filename"]
         mask_name = sample["filename"].replace(".JPEG", ".png")
@@ -89,12 +129,7 @@ class OOCObjectOnlyDataset(OOCDatasetBase):
         img = np.array(Image.open(img_path).convert("RGB"))
         mask = np.array(Image.open(mask_path).convert("L")) > 0
 
-        imagenet_mean = np.array([0.485, 0.456, 0.406]) * 255
-
-        background = np.ones_like(img, dtype=np.float32)
-
-        for c in range(3):
-            background[..., c] *= imagenet_mean[c]
+        background = self.create_background(img)
 
         background = background.astype(np.uint8)
 

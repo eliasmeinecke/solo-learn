@@ -4,12 +4,12 @@ import json
 import pandas as pd
 import torchvision.models as models
 from torch.utils.data import DataLoader
-import torchvision.transforms.v2 as v2
+from torchvision.transforms import PILToTensor
 
 from solo.methods.base import BaseMethod
 from foveation.ooc.ooc_data import OOCOriginalDataset, OOCInpaintedDataset, OOCObjectOnlyDataset, OOCShuffledDataset
 
-
+OOC_DATASETS = ["original", "inpainted", "object", "ooc"]
 
 with open(Path("trained_models_config.json")) as f:
     MODEL_CONFIGS = json.load(f)
@@ -26,33 +26,55 @@ class IdentityFoveation(torch.nn.Module):
         return img
 
 
-def load_data(dataset_name):
+def load_data(dataset_name, variant=None):
 
+    if dataset_name not in OOC_DATASETS:
+        raise ValueError(dataset_name)
+    
     root = Path("/home/data/elias/ImageNet-OOC1k_flattened")
 
-    T_pre = v2.Compose([
-        v2.Resize(540),
-        v2.ToImage(),
-        v2.ToDtype(torch.uint8)
-    ])
+    T_pre = PILToTensor()
 
     common_kwargs = dict(
         root=root,
         transform=T_pre
     )
-
-    dataset_map = {
-        "original": OOCOriginalDataset,
-        "inpainted": OOCInpaintedDataset,
-        "object": OOCObjectOnlyDataset,
-        "ooc": OOCShuffledDataset,
-    }
-
-    if dataset_name not in dataset_map:
+        
+    if dataset_name == "original":
+        dataset = OOCOriginalDataset(**common_kwargs)    
+    elif dataset_name == "inpainted":
+        
+        if variant == "random_gaze":
+            gaze_mode = "random"
+        elif variant == "central_gaze":
+            gaze_mode = "central"
+        else:
+            gaze_mode = "mask"
+            
+        dataset = OOCInpaintedDataset(
+            **common_kwargs,
+            gaze_mode=gaze_mode
+        )
+    elif dataset_name == "object":
+        
+        if variant == "black":
+            background = "black"
+        elif variant == "white":
+            background = "white"
+        elif variant == "gray":
+            background = "gray"
+        else:
+            background = "imagenet"
+            
+        dataset = OOCObjectOnlyDataset(
+            **common_kwargs,
+            background=background
+        )
+    elif dataset_name == "ooc":
+        dataset = OOCShuffledDataset(**common_kwargs)
+    else:
         raise ValueError(dataset_name)
-
-    dataset = dataset_map[dataset_name](**common_kwargs)
-
+    
     return DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4)
     
 

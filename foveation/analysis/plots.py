@@ -910,6 +910,269 @@ def plot_ooc_confidence_gap():
     plt.close()
 
     print(f"Saved → {out_path}")
+    
+    
+def plot_small_objects_accuracy():
+
+    SMALL_THRESH = 0.05
+
+    models = [
+        "base", "crop",
+        "blur-nosal", "blur-light", "blur-strong",
+        "cm-nosal", "cm-light", "cm-strong"
+    ]
+    
+    dfs = []
+
+    for model in models:
+        path = DATA_DIR / "size_analysis" / f"{model}.csv"
+        df = pd.read_csv(path)
+
+        df["model"] = model
+        dfs.append(df)
+
+    df_all = pd.concat(dfs, ignore_index=True)
+
+    # --- filter small objects ---
+    df_small = df_all[df_all["mask_area"] <= SMALL_THRESH].copy()
+
+    print(f"Total samples (small objects): {len(df_small)}")
+
+    # --- compute accuracy per model ---
+    df_acc = (
+        df_small
+        .groupby("model")["correct"]
+        .mean()
+        .reset_index()
+    )
+
+    # scale to %
+    df_acc["accuracy"] = df_acc["correct"] * 100
+
+    # clean names
+    df_acc["model"] = df_acc["model"].str.replace("-nosal", "", regex=False)
+
+    # enforce order
+    df_acc["model"] = pd.Categorical(
+        df_acc["model"],
+        categories=EXACT_FOVEATION_ORDER,
+        ordered=True
+    )
+    df_acc = df_acc.sort_values("model")
+
+    # --- nicer grouping colors ---
+    def get_group(f):
+        if "blur" in f:
+            return "blur"
+        elif "cm" in f:
+            return "cm"
+        elif f == "crop":
+            return "crop"
+        else:
+            return "base"
+
+    df_acc["group"] = df_acc["model"].apply(get_group)
+    
+    # --- plot ---
+    plt.figure(figsize=(7, 4))
+
+    sns.barplot(
+        data=df_acc,
+        x="model",
+        y="accuracy",
+        hue="group",
+        palette=FOVEATION_PALETTE
+    )
+
+    # value labels
+    for i, v in enumerate(df_acc["accuracy"]):
+        plt.text(i, v + 0.5, f"{v:.1f}", ha="center", fontsize=9)
+
+    plt.ylabel("Accuracy (%)")
+    plt.xlabel("Model")
+    plt.title(f"Performance on Small Objects (mask_area ≤ {SMALL_THRESH})")
+
+    plt.xticks(rotation=0)
+    plt.ylim(0, df_acc["accuracy"].max() + 5)
+
+    plt.tight_layout()
+
+    out_path = FIG_DIR / "size_analysis" / "small_objects_accuracy.pdf"
+    plt.savefig(out_path)
+    plt.close()
+
+    print(f"Saved → {out_path}")
+    
+    
+def plot_accuracy_vs_size():
+
+    models = [
+        "base", "crop",
+        "blur-nosal", "blur-light", "blur-strong",
+        "cm-nosal", "cm-light", "cm-strong"
+    ]
+
+    dfs = []
+
+    for model in models:
+        path = DATA_DIR / "size_analysis" / f"{model}.csv"
+        df = pd.read_csv(path)
+
+        df["model"] = model
+        dfs.append(df)
+
+    df_all = pd.concat(dfs, ignore_index=True)
+
+    # --- clean names ---
+    df_all["model"] = df_all["model"].str.replace("-nosal", "", regex=False)
+
+    # --- binning ---
+    n_bins = 12
+    df_all["size_bin"] = pd.qcut(df_all["mask_area"], q=n_bins, duplicates="drop")
+
+    # compute bin centers
+    df_all["bin_center"] = df_all["size_bin"].apply(lambda x: x.mid)
+
+    # --- aggregate ---
+    df_plot = (
+        df_all
+        .groupby(["model", "bin_center"])["correct"]
+        .mean()
+        .reset_index()
+    )
+
+    df_plot["accuracy"] = df_plot["correct"] * 100
+
+    # --- grouping (for colors) ---
+    def get_group(f):
+        if "blur" in f:
+            return "blur"
+        elif "cm" in f:
+            return "cm"
+        elif f == "crop":
+            return "crop"
+        else:
+            return "base"
+
+    df_plot["group"] = df_plot["model"].apply(get_group)
+
+    # --- plot ---
+    plt.figure(figsize=(7, 4))
+
+    sns.lineplot(
+        data=df_plot,
+        x="bin_center",
+        y="accuracy",
+        hue="group",
+        style="group",
+        palette=FOVEATION_PALETTE,
+        marker="o"
+    )
+
+    plt.xlabel("Object Size (mask_area)")
+    plt.ylabel("Accuracy (%)")
+    plt.title("Accuracy vs Object Size")
+
+    plt.tight_layout()
+
+    out_path = FIG_DIR / "size_analysis" / "accuracy_vs_size.pdf"
+    plt.savefig(out_path)
+    plt.close()
+
+    print(f"Saved → {out_path}")
+    
+    
+def plot_delta_accuracy_vs_size():
+
+    models = [
+        "base", "crop",
+        "blur-nosal", "blur-light", "blur-strong",
+        "cm-nosal", "cm-light", "cm-strong"
+    ]
+
+    dfs = []
+
+    for model in models:
+        path = DATA_DIR / "size_analysis" / f"{model}.csv"
+        df = pd.read_csv(path)
+
+        df["model"] = model
+        dfs.append(df)
+
+    df_all = pd.concat(dfs, ignore_index=True)
+
+    # --- clean names ---
+    df_all["model"] = df_all["model"].str.replace("-nosal", "", regex=False)
+
+    # --- binning ---
+    n_bins = 12
+    df_all["size_bin"] = pd.qcut(df_all["mask_area"], q=n_bins, duplicates="drop")
+    df_all["bin_center"] = df_all["size_bin"].apply(lambda x: x.mid)
+
+    # --- aggregate ---
+    df_plot = (
+        df_all
+        .groupby(["model", "bin_center"])["correct"]
+        .mean()
+        .reset_index()
+    )
+
+    df_plot["accuracy"] = df_plot["correct"] * 100
+
+    # --- separate baseline ---
+    df_base = df_plot[df_plot["model"] == "base"].copy()
+    df_base = df_base.rename(columns={"accuracy": "base_acc"})
+    df_base = df_base[["bin_center", "base_acc"]]
+
+    # --- merge baseline ---
+    df_plot = df_plot.merge(df_base, on="bin_center")
+
+    # --- delta ---
+    df_plot["delta"] = df_plot["accuracy"] - df_plot["base_acc"]
+
+    # remove base itself (always 0)
+    df_plot = df_plot[df_plot["model"] != "base"]
+
+    # --- grouping ---
+    def get_group(f):
+        if "blur" in f:
+            return "blur"
+        elif "cm" in f:
+            return "cm"
+        elif f == "crop":
+            return "crop"
+        else:
+            return "other"
+
+    df_plot["group"] = df_plot["model"].apply(get_group)
+
+    # --- plot ---
+    plt.figure(figsize=(7, 4))
+
+    sns.lineplot(
+        data=df_plot,
+        x="bin_center",
+        y="delta",
+        hue="group",
+        style="group",
+        palette=FOVEATION_PALETTE,
+        marker="o"
+    )
+
+    # zero line
+    plt.axhline(0, linestyle="--", color="gray", linewidth=1)
+
+    plt.xlabel("Object Size (mask_area)")
+    plt.ylabel("Δ Accuracy vs Baseline (%)")
+    plt.title("Improvement over Baseline vs Object Size")
+
+    plt.tight_layout()
+
+    out_path = FIG_DIR / "size_analysis" / "delta_accuracy_vs_size.pdf"
+    plt.savefig(out_path)
+    plt.close()
+
+    print(f"Saved → {out_path}")
         
     
 def export_linear_eval_latex():
@@ -979,5 +1242,8 @@ if __name__ == "__main__":
     #plot_object_trend()
     #plot_ooc_gap()
     #plot_model_confidence()
-    plot_ooc_confidence_gap()
+    #plot_ooc_confidence_gap()
+    #plot_small_objects_accuracy()
+    #plot_accuracy_vs_size()
+    #plot_delta_accuracy_vs_size()
     
