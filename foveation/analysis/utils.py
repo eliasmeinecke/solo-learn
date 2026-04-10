@@ -1,6 +1,7 @@
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "outputs"
 DATA_DIR = OUTPUT_DIR / "data"
@@ -78,10 +79,10 @@ EXACT_FOVEATION_ORDER = [
 ]
 
 FOVEATION_PALETTE = {
-    "base": "#000000",    
+    "base": "#4D4D4D",     
     "crop": "#E69F00",     
-    "blur": "#56B4E9",     
-    "cm": "#D55E00",       
+    "blur": "#4C9F70",     
+    "cm": "#5E3C99",     
 }
 
 OOC_DATASET_ORDER = ["original", "inpainted", "object", "ooc"]
@@ -109,29 +110,57 @@ def load_analysis_data(name: str) -> pd.DataFrame:
 
 
 def set_thesis_style():
+    # --- base style ---
     plt.style.use("default")
+    sns.set_theme(style="whitegrid")  # IMPORTANT for seaborn consistency
 
     plt.rcParams.update({
+
+        # --- figure ---
         "figure.figsize": (6, 4),
-        "figure.dpi": 100,
+        "figure.dpi": 120,
+        "savefig.dpi": 300,
+        "savefig.bbox": "tight",
 
+        # --- axes ---
         "axes.facecolor": "white",
-        "axes.edgecolor": "black",
-        "axes.linewidth": 1.0,
+        "axes.edgecolor": "#333333",
+        "axes.linewidth": 0.8,
         "axes.grid": True,
-        "grid.alpha": 0.25,
-        "grid.linestyle": "--",
+        "axes.axisbelow": True,   # grid behind bars/lines
 
+        # --- grid ---
+        "grid.alpha": 0.3,
+        "grid.linestyle": "--",
+        "grid.linewidth": 0.6,
+        "grid.color": "#BBBBBB",
+
+        # --- fonts ---
         "font.size": 11,
-        "axes.titlesize": 12,
+        "font.family": "sans-serif",
+
+        "axes.titlesize": 13,
+        "axes.titleweight": "bold",
+
         "axes.labelsize": 11,
 
-        "legend.fontsize": 10,
         "xtick.labelsize": 10,
         "ytick.labelsize": 10,
 
+        # --- ticks ---
+        "xtick.direction": "out",
+        "ytick.direction": "out",
+
+        # --- legend ---
+        "legend.fontsize": 10,
+        "legend.frameon": False,
+
+        # --- lines ---
         "lines.linewidth": 2,
         "lines.markersize": 6,
+
+        # --- barplots ---
+        "patch.edgecolor": "none",   # removes ugly borders
     })
 
 
@@ -285,3 +314,73 @@ def add_category_averages(table):
     table = pd.concat(blocks)
 
     return table
+
+
+def compute_confidence_gap(models, mode="correct"):
+    
+    results = []
+
+    for model in models:
+
+        model_path = DATA_DIR / "ooc_per_sample" / model
+        dfs = {}
+
+        for d in ["object", "ooc"]:
+            path = model_path / f"{model}_{d}.csv"
+            df = pd.read_csv(path)
+
+            if mode == "correct":
+                df = df[df["correct"] == 1]
+            elif mode == "incorrect":
+                df = df[df["correct"] == 0]
+            elif mode == "all":
+                pass
+            else:
+                raise ValueError(mode)
+
+            dfs[d] = df
+
+        conf_object = dfs["object"]["conf_top1"].mean()
+        conf_ooc = dfs["ooc"]["conf_top1"].mean()
+
+        gap = conf_object - conf_ooc
+
+        results.append({
+            "model": model,
+            "gap": gap
+        })
+
+    return pd.DataFrame(results)
+
+
+def get_group(f):
+        if "blur" in f:
+            return "blur"
+        elif "cm" in f:
+            return "cm"
+        elif f == "crop":
+            return "crop"
+        else:
+            return "base"
+        
+        
+def parse_model(m):
+        if m == "base":
+            return "base", 0
+        if m == "crop":
+            return "crop", 1
+        if "blur" in m:
+            if "light" in m:
+                return "blur", 2
+            elif "strong" in m:
+                return "blur", 4
+            else:
+                return "blur", 3
+        if "cm" in m:
+            if "light" in m:
+                return "cm", 2
+            elif "strong" in m:
+                return "cm", 4
+            else:
+                return "cm", 3
+        return "other", -1
