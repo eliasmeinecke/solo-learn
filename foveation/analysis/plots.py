@@ -1277,6 +1277,7 @@ def export_linear_eval_latex():
     
 if __name__ == "__main__":
     print("-------------------------------------------------------------------------------")
+    #plot_lr_sweep_knn_mean()
     #plot_linear_eval_foveated()
     #plot_delta_to_central_gaze()
     #plot_ooc_delta_heatmap()
