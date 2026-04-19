@@ -1,212 +1,21 @@
 import random
+import csv
+import argparse
 import numpy as np
 from pathlib import Path
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 import cv2
+from tqdm import tqdm
 
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from torchvision.datasets import ImageFolder
 from torchvision.transforms import PILToTensor
+import torchvision.transforms.v2 as v2
+
+from foveation.factory import setup_exact_foveation
 from foveation.utils import ImageNetMaskLoader
-
-
-class CrowdingDataset(Dataset):
-    def __init__(
-        self,
-        root,
-        json_path,
-        transform=None,
-        condition="a",   # a, xa, ax, xax
-        canvas_size=540,
-        object_size=120,
-        background="gray"
-    ):
-        self.dataset = ImageFolder(root=root)
-        self.transform = transform
-        self.condition = condition
-
-        self.canvas_size = canvas_size
-        self.object_size = object_size
-        self.background = background
-
-        self.mask_loader = ImageNetMaskLoader(json_path=json_path, fill_holes=True)
-
-        # --- group by class (for flanker sampling) ---
-        self.class_to_indices = {}
-        for i, (_, label) in enumerate(self.dataset.samples):
-            self.class_to_indices.setdefault(label, []).append(i)
-
-    def __len__(self):
-        return len(self.dataset)
-
-    # -----------------------
-    # helpers
-    # -----------------------
-
-    def extract_object(self, img, mask):
-        """Apply mask and crop object"""
-        mask = (mask > 0).astype(np.uint8)
-
-        ys, xs = np.where(mask)
-        if len(xs) == 0:
-            return None
-
-        x0, x1 = xs.min(), xs.max()
-        y0, y1 = ys.min(), ys.max()
-
-        obj = img[y0:y1+1, x0:x1+1]
-        mask = mask[y0:y1+1, x0:x1+1]
-
-        return obj, mask
-
-    def resize_object(self, obj, mask):
-        h, w = obj.shape[:2]
-
-        scale = self.object_size / max(h, w)
-
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-
-        obj_pil = Image.fromarray(obj)
-        mask_pil = Image.fromarray(mask * 255)
-
-        obj_pil = obj_pil.resize((new_w, new_h), Image.BILINEAR)
-        mask_pil = mask_pil.resize((new_w, new_h), Image.NEAREST)
-
-        return np.array(obj_pil), (np.array(mask_pil) > 0)
-
-    def create_background(self):
-        H = W = self.canvas_size
-
-        if self.background == "gray":
-            return np.ones((H, W, 3), dtype=np.uint8) * 127
-        elif self.background == "black":
-            return np.zeros((H, W, 3), dtype=np.uint8)
-        else:
-            imagenet_mean = np.array([0.485, 0.456, 0.406]) * 255
-            background = np.ones((H, W, 3), dtype=np.uint8)
-            for c in range(3):
-                background[..., c] *= imagenet_mean[c]
-            return background
-
-    def paste(self, canvas, obj, mask, cx, cy):
-        H, W = canvas.shape[:2]
-        h, w = obj.shape[:2]
-
-        x0 = int(cx - w // 2)
-        y0 = int(cy - h // 2)
-
-        x1 = x0 + w
-        y1 = y0 + h
-
-        if x0 < 0 or y0 < 0 or x1 > W or y1 > H:
-            print("Skipped paste (out of bounds)")
-            return canvas  # skip if out of bounds
-
-        region = canvas[y0:y1, x0:x1]
-        region[mask] = obj[mask]
-        canvas[y0:y1, x0:x1] = region
-
-        return canvas
-
-    def sample_flanker(self, target_label):
-        while True:
-            idx = random.randint(0, len(self.dataset) - 1)
-            _, label = self.dataset.samples[idx]
-            if label != target_label:
-                return idx
-
-    # -----------------------
-    # main
-    # -----------------------
-
-    def __getitem__(self, idx):
-
-        path, label = self.dataset.samples[idx]
-        filename = Path(path).name
-
-        img = np.array(Image.open(path).convert("RGB"))
-
-        mask = self.mask_loader.get_mask(filename)
-        # important fix: resize mask to image size
-        H_img, W_img = img.shape[:2]
-        H_mask, W_mask = mask.shape
-
-        if (H_mask != H_img) or (W_mask != W_img):
-            mask = cv2.resize(
-                mask.astype(np.uint8),
-                (W_img, H_img),
-                interpolation=cv2.INTER_NEAREST
-            )
-
-        obj = self.extract_object(img, mask)
-        if obj is None:
-            return self.__getitem__((idx + 1) % len(self))
-
-        obj, mask = obj
-        obj, mask = self.resize_object(obj, mask)
-
-        # --- canvas ---
-        canvas = self.create_background()
-
-        H = W = self.canvas_size
-        cx_target = int(W * 0.6)
-        cy_target = int(H * 0.5)
-
-        # --- paste target ---
-        canvas = self.paste(canvas, obj, mask, cx_target, cy_target)
-
-        # --- flankers ---
-        if self.condition in ["xa", "xax"]:
-            idx_f = self.sample_flanker(label)
-            obj_f, mask_f = self._load_object(idx_f)
-
-            cx_center = int(W * 0.35)
-            canvas = self.paste(canvas, obj_f, mask_f, cx_center, cy_target)
-
-        if self.condition in ["ax", "xax"]:
-            idx_f = self.sample_flanker(label)
-            obj_f, mask_f = self._load_object(idx_f)
-
-            cx_periph = int(W * 0.85)
-            canvas = self.paste(canvas, obj_f, mask_f, cx_periph, cy_target)
-
-        # --- to PIL ---
-        img_out = Image.fromarray(canvas)
-
-        if self.transform:
-            img_out = self.transform(img_out)
-
-        # --- gaze (TARGET!) ---
-        gaze = torch.tensor([
-            cx_target / W,
-            cy_target / H
-        ], dtype=torch.float32)
-
-        return img_out, label, gaze
-
-    # helper for flankers
-    def _load_object(self, idx):
-        path, label = self.dataset.samples[idx]
-        filename = Path(path).name
-
-        img = np.array(Image.open(path).convert("RGB"))
-        mask = self.mask_loader.get_mask(filename)
-        # important fix: resize mask to image size
-        H_img, W_img = img.shape[:2]
-        H_mask, W_mask = mask.shape
-
-        if (H_mask != H_img) or (W_mask != W_img):
-            mask = cv2.resize(
-                mask.astype(np.uint8),
-                (W_img, H_img),
-                interpolation=cv2.INTER_NEAREST
-            )
-
-        obj = self.extract_object(img, mask)
-        obj, mask = obj
-        return self.resize_object(obj, mask)
+from foveation.ooc.ooc_utils import load_model, IdentityFoveation
     
     
 class CrowdingDatasetNotMNIST(Dataset):
@@ -219,8 +28,7 @@ class CrowdingDatasetNotMNIST(Dataset):
         condition="a",   # a, xa, ax, xax
         canvas_size=540,
         object_size=120,
-        flanker_size=80,
-        background="black"
+        flanker_size=60
     ):
         # --- target dataset ---
         self.dataset = ImageFolder(root=imagenet_root)
@@ -235,7 +43,6 @@ class CrowdingDatasetNotMNIST(Dataset):
         self.canvas_size = canvas_size
         self.object_size = object_size
         self.flanker_size = flanker_size
-        self.background = background
 
     def __len__(self):
         return len(self.dataset)
@@ -260,14 +67,16 @@ class CrowdingDatasetNotMNIST(Dataset):
         return obj, mask
 
     def resize_object(self, obj, mask):
+
         h, w = obj.shape[:2]
+        if h == 0 or w == 0:
+            return None
+        
         scale = self.object_size / max(h, w)
-
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-
+        new_w = max(1, round(w * scale))
+        new_h = max(1, round(h * scale))
         obj = Image.fromarray(obj).resize((new_w, new_h), Image.BILINEAR)
-        mask = Image.fromarray(mask * 255).resize((new_w, new_h), Image.NEAREST)
+        mask = Image.fromarray(mask.astype(np.uint8)*255).resize((new_w, new_h), Image.NEAREST)
 
         return np.array(obj), (np.array(mask) > 0)
 
@@ -276,21 +85,25 @@ class CrowdingDatasetNotMNIST(Dataset):
     # -----------------------
 
     def load_flanker(self):
-        idx = random.randint(0, len(self.notmnist) - 1)
-        path, _ = self.notmnist.samples[idx]
+        while True:
+            try:
+                idx = random.randint(0, len(self.notmnist)-1)
+                path, _ = self.notmnist.samples[idx]
 
-        img = Image.open(path).convert("L")  # grayscale
-        img = img.resize((self.flanker_size, self.flanker_size), Image.BILINEAR)
+                img = Image.open(path).convert("L")
+                img = img.resize(
+                    (self.flanker_size, self.flanker_size),
+                    Image.BILINEAR
+                )
 
-        img_np = np.array(img)
+                img_np = np.array(img)
+                mask = img_np > 30
+                obj = np.stack([img_np]*3, axis=-1)
+                return obj, mask
 
-        # normalize to binary-ish mask
-        mask = img_np > 30
-
-        # convert to RGB
-        obj = np.stack([img_np]*3, axis=-1)
-
-        return obj, mask
+            except (UnidentifiedImageError, OSError):
+                # corrupted image → sample another flanker
+                continue
 
     # -----------------------
     # CANVAS
@@ -298,17 +111,7 @@ class CrowdingDatasetNotMNIST(Dataset):
 
     def create_background(self):
         H = W = self.canvas_size
-
-        if self.background == "gray":
-            return np.ones((H, W, 3), dtype=np.uint8) * 127
-        elif self.background == "black":
-            return np.zeros((H, W, 3), dtype=np.uint8)
-        else:
-            imagenet_mean = np.array([0.485, 0.456, 0.406]) * 255
-            bg = np.ones((H, W, 3), dtype=np.uint8)
-            for c in range(3):
-                bg[..., c] *= imagenet_mean[c]
-            return bg
+        return np.zeros((H, W, 3), dtype=np.uint8)
 
     def paste(self, canvas, obj, mask, cx, cy):
         H, W = canvas.shape[:2]
@@ -358,25 +161,32 @@ class CrowdingDatasetNotMNIST(Dataset):
 
         obj, mask = obj
         obj, mask = self.resize_object(obj, mask)
+        
+        obj_f, mask_f = self.load_flanker()
 
         # --- CANVAS ---
         canvas = self.create_background()
         H = W = self.canvas_size
 
-        cx_target = int(W * 0.6)
+        cx_target = int(W * 0.5)
         cy_target = int(H * 0.5)
 
-        canvas = self.paste(canvas, obj, mask, cx_target, cy_target)
-
         # --- FLANKERS ---
-        if self.condition in ["xa", "xax"]:
-            obj_f, mask_f = self.load_flanker()
-            canvas = self.paste(canvas, obj_f, mask_f, int(W * 0.35), cy_target)
+        if self.condition == "xa":
+            cx_target = int(W * 0.75)
+            canvas = self.paste(canvas, obj_f, mask_f, int(W * 0.5), cy_target)
+        elif self.condition == "ax":  
+            cx_target = int(W * 0.5)
+            canvas = self.paste(canvas, obj_f, mask_f, int(W * 0.75), cy_target)
+        elif self.condition == "xax":
+            cx_target = int(W * 0.5)
+            canvas = self.paste(canvas, obj_f, mask_f, int(W * 0.25), cy_target)
+            canvas = self.paste(canvas, obj_f, mask_f, int(W * 0.75), cy_target)
+        else:
+            pass
 
-        if self.condition in ["ax", "xax"]:
-            obj_f, mask_f = self.load_flanker()
-            canvas = self.paste(canvas, obj_f, mask_f, int(W * 0.85), cy_target)
-
+        canvas = self.paste(canvas, obj, mask, cx_target, cy_target)
+        
         # --- TO TENSOR ---
         img_out = Image.fromarray(canvas)
 
@@ -391,26 +201,131 @@ class CrowdingDatasetNotMNIST(Dataset):
         return img_out, label, gaze
     
     
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    
+
+def evaluate_crowding(model, device, model_name, foveation, seed, imagenet_root, json_path, notmnist_root):
+
+    set_seed(seed)
+    model.eval()
+    model.to(device)
+    conditions = ["a", "xa", "ax", "xax"]
+
+    stats = {c: {"correct": 0, "conf_sum": 0.0, "n": 0} for c in conditions}
+
+    # --- post-transform ---
+    T_post = v2.Compose([
+        v2.Resize(256),
+        v2.CenterCrop(224),
+        v2.ToDtype(torch.float32, scale=True),
+        v2.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
+    ])
+
+    # --- evaluate each condition ---
+    for cond in conditions:
+
+        print(f"\nCondition: {cond}")
+
+        ds = CrowdingDatasetNotMNIST(
+            imagenet_root=imagenet_root, 
+            mask_json=json_path, 
+            notmnist_root=notmnist_root, 
+            transform=PILToTensor(), 
+            condition=cond)
+
+        loader = DataLoader(ds, batch_size=1, shuffle=False, num_workers=4)
+
+        with torch.no_grad():
+
+            pbar = tqdm(loader, total=len(loader))
+
+            for img, label, gaze in pbar:
+                img = img.to(device)
+                label = label.to(device)
+                gaze = gaze.to(device)
+
+                # convert relative gaze to absolute gaze
+                B, C, H, W = img.shape
+                gaze_abs = gaze.clone()
+                gaze_abs[0, 0] *= W
+                gaze_abs[0, 1] *= H 
+
+                img = foveation(img, gaze_abs)
+                img = T_post(img)
+
+                logits = model(img)
+
+                probs = torch.softmax(logits, dim=1)
+                top5_probs, top5_idx = torch.topk(probs, k=5, dim=1)
+                pred = top5_idx[:,0]
+                correct = (pred == label)
+
+                stats[cond]["correct"] += int(correct.item())
+                # top1 confidence
+                stats[cond]["conf_sum"] += top5_probs[0,0].item()
+                stats[cond]["n"] += 1
+
+    # summarize
+    result = {"foveation": model_name, "seed": seed}
+
+    for cond in conditions:
+        acc = stats[cond]["correct"] / stats[cond]["n"]
+        conf = stats[cond]["conf_sum"] / stats[cond]["n"]
+        result[f"{cond}_acc"] = acc
+        result[f"{cond}_conf"] = conf
+
+    return result
+
+
+def save_result(result, out_path):
+    write_header = not Path(out_path).exists()
+    with open(out_path, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=result.keys())
+        if write_header:
+            writer.writeheader()
+        writer.writerow(result)
+    print(f"Saved -> {out_path}")
+    
     
 if __name__ == "__main__":
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", type=str, default="base")
+    parser.add_argument("--seed", type=int, default=1)
+    args = parser.parse_args()
     
     imagenet_val_path = "/home/data/ILSVRC_real/val"
     json_path = "/home/data/elias/imagenet_sam_masks/imagenet_val_masks_with_center.json"
     notmnist_path = "/home/data/elias/notMNIST_small"
     
-    dataset = CrowdingDataset(
-        root=imagenet_val_path,
-        json_path=json_path,
-        transform=PILToTensor(),
-        condition="xax"
-    )
+    results_path = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/crowding_results.csv")
     
-    dataset = CrowdingDatasetNotMNIST(
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    # model
+    model = load_model(args.model).to(device)
+
+    # foveation
+    if args.model in ["base", "dummy"]:
+        foveation = IdentityFoveation()
+    else:
+        foveation = setup_exact_foveation(args.model)
+        
+    foveation = foveation.to(device)
+    
+    result = evaluate_crowding(
+        model=model,
+        device=device,
+        model_name=args.model,
+        foveation=foveation,
+        seed=args.seed,
         imagenet_root=imagenet_val_path,
         json_path=json_path,
-        notmnist_root=notmnist_path,
-        transform=PILToTensor(),
-        condition="xax"
+        notmnist_root=notmnist_path
     )
-    
+
+    save_result(result, results_path)
     

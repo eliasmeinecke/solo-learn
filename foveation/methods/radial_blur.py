@@ -57,10 +57,10 @@ class RadialBlurFoveation(nn.Module):
         # distance map
         R = torch.sqrt((xs - x_g) ** 2 + (ys - y_g) ** 2)
 
-        R_max = R.amax(dim=(1, 2), keepdim=True)
         if (self.saliency_alpha != 0) and (saliency is not None):
             R = R / (1.0 + self.saliency_alpha * saliency)
-
+            
+        R_max = R.amax(dim=(1, 2), keepdim=True)
         # radii & sigmas
         radii = [f * R_max for f in self.radii_frac]
         transition_width = self.transition_frac * R_max

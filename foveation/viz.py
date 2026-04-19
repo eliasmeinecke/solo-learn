@@ -25,7 +25,8 @@ from foveation.methods.radial_blur import RadialBlurFoveation
 from foveation.methods.cm import CorticalMagnification
 
 from foveation.ooc.ooc_data import OOCOriginalDataset, OOCInpaintedDataset, OOCObjectOnlyDataset, OOCShuffledDataset
-from foveation.crowding import CrowdingDataset, CrowdingDatasetNotMNIST
+from foveation.ooc.full_imagenet_ooc import ImageNetValOOC
+from foveation.crowding import CrowdingDatasetNotMNIST
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -51,12 +52,13 @@ def main():
             "annot": annot
         })
     
-    viz_fov(samples, method="crop")
-    viz_fov(samples, method="blur")
-    viz_fov(samples, method="cm")
-    # viz_imagenet_mask_samples(4)
-    # viz_ooc_datasets(foveation="cm-nosal")
-    # viz_crowding_dataset(condition="xax", foveation="blur-light")
+    #viz_fov(samples, method="crop")
+    #viz_fov(samples, method="blur")
+    #viz_fov(samples, method="cm")
+    #viz_imagenet_mask_samples(4)
+    #viz_ooc_datasets(foveation="blur-light")
+    #viz_full_imagenet_ooc(idx=200)
+    #viz_crowding_dataset(condition="xax", foveation="blur-light")
     # viz_imagenet_fov_samples(3, remove_padding_bool=True)
 
 
@@ -502,14 +504,39 @@ def viz_ooc_datasets(n_samples=3, foveation=None):
     print(f"Saved {save_name}")
     
     
+def viz_full_imagenet_ooc(idx=100):
+    modes = ["original", "object", "ooc"]
+    fig, axes = plt.subplots(1, 3, figsize=(15,5))
+
+    for ax, mode in zip(axes, modes):
+        ds = ImageNetValOOC(mode=mode, seed=42, transform=None) # IMPORTANT: raw PIL image for mpl
+        img, label, gaze = ds[idx]
+        img = np.array(img)
+        H, W = img.shape[:2]
+        gx = gaze[0].item() * W
+        gy = gaze[1].item() * H
+        ax.imshow(img)
+        ax.scatter(gx, gy, s=20, c="cyan", edgecolors="black", linewidths=1.5)
+        ax.set_title(f"{mode}\nlabel={label}")
+        ax.axis("off")
+    plt.tight_layout()
+    
+    save_name=f"full_ooc_example.png"
+    base_dir = Path(__file__).resolve().parent
+    out_path = base_dir / "plots" / "ooc" / save_name
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=200)
+    plt.close()
+    print(f"Saved {save_name}")
+    
 def viz_crowding_dataset(condition, foveation=None, n=3):
     
     imagenet_val_path = "/home/data/ILSVRC_real/val"
     json_path = "/home/data/elias/imagenet_sam_masks/imagenet_val_masks_with_center.json"
     notmnist_path = "/home/data/elias/notMNIST_small"
-
-    # dataset = CrowdingDataset(imagenet_val_path, json_path, transform=PILToTensor(), condition=condition)
-    dataset = CrowdingDatasetNotMNIST(imagenet_val_path, json_path, notmnist_path, transform=PILToTensor(), condition="xax")
+    
+    dataset = CrowdingDatasetNotMNIST(imagenet_val_path, json_path, notmnist_path, transform=PILToTensor(), condition=condition)
     indices = random.sample(range(len(dataset)), n)
     
     if foveation:
@@ -571,6 +598,8 @@ def load_sample(i):
     df = pd.read_parquet(ANNOT_PATH)
 
     with h5py.File(H5_PATH, "r") as hf:
+        
+        # print({k: hf[k].shape for k in hf.keys()})
         frame = hf.get("frames")[i]
         saliency = hf.get("saliency")[i]
         frame = Image.open(io.BytesIO(frame)).convert("RGB")

@@ -85,7 +85,7 @@ FOVEATION_PALETTE = {
     "cm": "#5E3C99",     
 }
 
-OOC_DATASET_ORDER = ["original", "inpainted", "object", "ooc"]
+OOC_DATASET_ORDER = ["Original", "Object-Only", "OOC"]
 
 DATASET_RENAME_LATEX = {
     "ImageNet-1k 100%": "ImageNet-1k 100\\%",
@@ -220,137 +220,6 @@ def clean_dataset_names(df):
 def add_foveation_order(df):
     df["foveation"] = pd.Categorical(df["foveation"], categories=FOVEATION_ORDER, ordered=True)
     return df
-
-
-def fix_dataset_order_in_table(table):
-    table = table.reset_index()
-
-    table["dataset"] = pd.Categorical(
-        table["dataset"],
-        categories=DATASET_ORDER,
-        ordered=True
-    )
-
-    table = table.sort_values("dataset")
-
-    table = table.set_index(["category", "dataset"])
-    return table
-
-def compute_category_average(df):
-    avg = (
-        df.groupby(["category", "foveation"])["linear_acc1_best"]
-        .mean()
-        .reset_index()
-    )
-    return avg
-
-
-def build_linear_eval_table():
-
-    df = load_analysis_data("linear_eval_processed")
-
-    table = df.pivot_table(
-        index=["category", "dataset"],
-        columns="foveation",
-        values="linear_acc1_best"
-    )
-    
-    table = fix_dataset_order_in_table(table)
-
-    # rename datasets for LaTeX
-    new_index = []
-
-    for category, dataset in table.index:
-
-        dataset_latex = DATASET_RENAME_LATEX.get(dataset, dataset)
-
-        new_index.append((category, dataset_latex))
-
-    table.index = pd.MultiIndex.from_tuples(
-        new_index,
-        names=table.index.names
-    )
-
-    return table
-
-
-def highlight_best(row):
-
-    max_val = row.max()
-
-    return [
-        f"\\textbf{{{v:.2f}}}" if v == max_val else f"{v:.2f}"
-        for v in row
-    ]
-
-
-def add_category_averages(table):
-
-    blocks = []
-
-    for category in table.index.get_level_values(0).unique():
-
-        subset = table.loc[category]
-
-        # Average berechnen
-        avg = subset.mean()
-
-        avg_df = pd.DataFrame([avg])
-        avg_df.index = pd.MultiIndex.from_tuples(
-            [(category, "Average")],
-            names=table.index.names
-        )
-
-        # Dataset rows wieder MultiIndex geben
-        subset.index = pd.MultiIndex.from_product(
-            [[category], subset.index],
-            names=table.index.names
-        )
-
-        block = pd.concat([subset, avg_df])
-
-        blocks.append(block)
-
-    table = pd.concat(blocks)
-
-    return table
-
-
-def compute_confidence_gap(models, mode="correct"):
-    
-    results = []
-
-    for model in models:
-
-        model_path = DATA_DIR / "ooc_per_sample" / model
-        dfs = {}
-
-        for d in ["object", "ooc"]:
-            path = model_path / f"{model}_{d}.csv"
-            df = pd.read_csv(path)
-
-            if mode == "correct":
-                df = df[df["correct"] == 1]
-            elif mode == "incorrect":
-                df = df[df["correct"] == 0]
-            elif mode == "all":
-                pass
-            else:
-                raise ValueError(mode)
-
-            dfs[d] = df
-
-        conf_object = dfs["object"]["conf_top1"].mean()
-        conf_ooc = dfs["ooc"]["conf_top1"].mean()
-
-        gap = conf_object - conf_ooc
-
-        results.append({
-            "model": model,
-            "gap": gap
-        })
-
-    return pd.DataFrame(results)
 
 
 def get_group(f):

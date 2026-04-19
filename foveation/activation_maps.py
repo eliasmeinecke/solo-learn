@@ -33,19 +33,13 @@ IDX_TO_NAME = {int(k): v[1] for k, v in CLASS_INDEX.items()}
 # GradCAM core
 # ------------------------
 
-def run_gradcam(model, img, label=None):
+def run_gradcam(model, img, target_class):
 
     target_layers = [model.backbone.layer4[-1]]
 
     with GradCAM(model=model, target_layers=target_layers) as cam:
 
-        if label is None:
-            outputs = model(img)
-            pred = outputs.argmax(dim=1).item()
-        else:
-            pred = label
-
-        targets = [ClassifierOutputTarget(pred)]
+        targets = [ClassifierOutputTarget(target_class)]
 
         grayscale_cam = cam(
             input_tensor=img,
@@ -56,7 +50,7 @@ def run_gradcam(model, img, label=None):
 
         cam_map = grayscale_cam[0]
 
-    return cam_map, pred
+    return cam_map
 
 
 def visualize_cam(img_tensor, cam_map):
@@ -99,6 +93,7 @@ def main(dataset_name):
     dataset = loader.dataset
     #indices = random.sample(range(len(dataset)), 3)
     indices = [1107, 209, 142]
+    #indices = [302, 84, 69]
 
     print(f"Selected indices: {indices}")
 
@@ -143,8 +138,12 @@ def main(dataset_name):
             # --- post transform ---
             img_input = T_post(img_fov)
 
-            # --- gradcam ---
-            cam_map, pred = run_gradcam(model, img_input)
+            # --- prediction ---
+            outputs = model(img_input)
+            pred = outputs.argmax(dim=1).item()
+
+            # --- gradcam on GT ---
+            cam_map = run_gradcam(model, img_input, label)
             vis = visualize_cam(img_input, cam_map)
 
             ax = axes[row_idx, col_idx]

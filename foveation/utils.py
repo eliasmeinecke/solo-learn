@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import random
 import torch
 from torch.utils.data import Dataset
 from torchvision.datasets import ImageFolder
@@ -103,3 +104,201 @@ class ImageNetMaskLoader:
             entry["centroid"]["x_rel"],
             entry["centroid"]["y_rel"]
         )
+
+
+class CrowdingDataset(Dataset):
+    def __init__(
+        self,
+        root,
+        json_path,
+        transform=None,
+        condition="a",   # a, xa, ax, xax
+        canvas_size=540,
+        object_size=120,
+        background="gray"
+    ):
+        self.dataset = ImageFolder(root=root)
+        self.transform = transform
+        self.condition = condition
+
+        self.canvas_size = canvas_size
+        self.object_size = object_size
+        self.background = background
+
+        self.mask_loader = ImageNetMaskLoader(json_path=json_path, fill_holes=True)
+
+        # --- group by class (for flanker sampling) ---
+        self.class_to_indices = {}
+        for i, (_, label) in enumerate(self.dataset.samples):
+            self.class_to_indices.setdefault(label, []).append(i)
+
+    def __len__(self):
+        return len(self.dataset)
+
+    # -----------------------
+    # helpers
+    # -----------------------
+
+    def extract_object(self, img, mask):
+        """Apply mask and crop object"""
+        mask = (mask > 0).astype(np.uint8)
+
+        ys, xs = np.where(mask)
+        if len(xs) == 0:
+            return None
+
+        x0, x1 = xs.min(), xs.max()
+        y0, y1 = ys.min(), ys.max()
+
+        obj = img[y0:y1+1, x0:x1+1]
+        mask = mask[y0:y1+1, x0:x1+1]
+
+        return obj, mask
+
+    def resize_object(self, obj, mask):
+        h, w = obj.shape[:2]
+
+        scale = self.object_size / max(h, w)
+
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+
+        obj_pil = Image.fromarray(obj)
+        mask_pil = Image.fromarray(mask * 255)
+
+        obj_pil = obj_pil.resize((new_w, new_h), Image.BILINEAR)
+        mask_pil = mask_pil.resize((new_w, new_h), Image.NEAREST)
+
+        return np.array(obj_pil), (np.array(mask_pil) > 0)
+
+    def create_background(self):
+        H = W = self.canvas_size
+
+        if self.background == "gray":
+            return np.ones((H, W, 3), dtype=np.uint8) * 127
+        elif self.background == "black":
+            return np.zeros((H, W, 3), dtype=np.uint8)
+        else:
+            imagenet_mean = np.array([0.485, 0.456, 0.406]) * 255
+            background = np.ones((H, W, 3), dtype=np.uint8)
+            for c in range(3):
+                background[..., c] *= imagenet_mean[c]
+            return background
+
+    def paste(self, canvas, obj, mask, cx, cy):
+        H, W = canvas.shape[:2]
+        h, w = obj.shape[:2]
+
+        x0 = int(cx - w // 2)
+        y0 = int(cy - h // 2)
+
+        x1 = x0 + w
+        y1 = y0 + h
+
+        if x0 < 0 or y0 < 0 or x1 > W or y1 > H:
+            print("Skipped paste (out of bounds)")
+            return canvas  # skip if out of bounds
+
+        region = canvas[y0:y1, x0:x1]
+        region[mask] = obj[mask]
+        canvas[y0:y1, x0:x1] = region
+
+        return canvas
+
+    def sample_flanker(self, target_label):
+        while True:
+            idx = random.randint(0, len(self.dataset) - 1)
+            _, label = self.dataset.samples[idx]
+            if label != target_label:
+                return idx
+
+    # -----------------------
+    # main
+    # -----------------------
+
+    def __getitem__(self, idx):
+
+        path, label = self.dataset.samples[idx]
+        filename = Path(path).name
+
+        img = np.array(Image.open(path).convert("RGB"))
+
+        mask = self.mask_loader.get_mask(filename)
+        # important fix: resize mask to image size
+        H_img, W_img = img.shape[:2]
+        H_mask, W_mask = mask.shape
+
+        if (H_mask != H_img) or (W_mask != W_img):
+            mask = cv2.resize(
+                mask.astype(np.uint8),
+                (W_img, H_img),
+                interpolation=cv2.INTER_NEAREST
+            )
+
+        obj = self.extract_object(img, mask)
+        if obj is None:
+            return self.__getitem__((idx + 1) % len(self))
+
+        obj, mask = obj
+        obj, mask = self.resize_object(obj, mask)
+
+        # --- canvas ---
+        canvas = self.create_background()
+
+        H = W = self.canvas_size
+        cx_target = int(W * 0.6)
+        cy_target = int(H * 0.5)
+
+        # --- paste target ---
+        canvas = self.paste(canvas, obj, mask, cx_target, cy_target)
+
+        # --- flankers ---
+        if self.condition in ["xa", "xax"]:
+            idx_f = self.sample_flanker(label)
+            obj_f, mask_f = self._load_object(idx_f)
+
+            cx_center = int(W * 0.35)
+            canvas = self.paste(canvas, obj_f, mask_f, cx_center, cy_target)
+
+        if self.condition in ["ax", "xax"]:
+            idx_f = self.sample_flanker(label)
+            obj_f, mask_f = self._load_object(idx_f)
+
+            cx_periph = int(W * 0.85)
+            canvas = self.paste(canvas, obj_f, mask_f, cx_periph, cy_target)
+
+        # --- to PIL ---
+        img_out = Image.fromarray(canvas)
+
+        if self.transform:
+            img_out = self.transform(img_out)
+
+        # --- gaze (TARGET!) ---
+        gaze = torch.tensor([
+            cx_target / W,
+            cy_target / H
+        ], dtype=torch.float32)
+
+        return img_out, label, gaze
+
+    # helper for flankers
+    def _load_object(self, idx):
+        path, label = self.dataset.samples[idx]
+        filename = Path(path).name
+
+        img = np.array(Image.open(path).convert("RGB"))
+        mask = self.mask_loader.get_mask(filename)
+        # important fix: resize mask to image size
+        H_img, W_img = img.shape[:2]
+        H_mask, W_mask = mask.shape
+
+        if (H_mask != H_img) or (W_mask != W_img):
+            mask = cv2.resize(
+                mask.astype(np.uint8),
+                (W_img, H_img),
+                interpolation=cv2.INTER_NEAREST
+            )
+
+        obj = self.extract_object(img, mask)
+        obj, mask = obj
+        return self.resize_object(obj, mask)

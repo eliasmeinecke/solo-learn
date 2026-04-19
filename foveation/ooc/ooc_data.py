@@ -100,8 +100,6 @@ class OOCObjectOnlyDataset(OOCDatasetBase):
         
     def create_background(self, img):
 
-        H, W, _ = img.shape
-
         if self.background == "imagenet":
             imagenet_mean = np.array([0.485, 0.456, 0.406]) * 255
             background = np.ones_like(img, dtype=np.float32)

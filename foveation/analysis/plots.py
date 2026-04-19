@@ -3,15 +3,11 @@ import seaborn as sns
 from pathlib import Path
 import pandas as pd
 import numpy as np
+from scipy.stats import kurtosis
 
 from .utils import (
     load_analysis_data, 
     set_thesis_style, 
-    build_linear_eval_table, 
-    highlight_best, 
-    add_category_averages,
-    fix_dataset_order_in_table,
-    compute_confidence_gap,
     parse_model,
     get_group,
     FOVEATION_ORDER,
@@ -84,229 +80,6 @@ def plot_lr_sweep_knn_mean():
     plt.close()
     print(f"Saved figure → {out_path}")
 
-
-def plot_knn_mean(metric="top1"):
-
-    df = load_analysis_data("pretrain_processed")
-
-    cols = [c for c in df.columns if f"knn_{metric}_k" in c]
-
-    df[f"mean_{metric}"] = df[cols].mean(axis=1)
-
-    df_sorted = df.set_index("foveation").loc[FOVEATION_ORDER].reset_index()
-
-    plt.figure(figsize=(8,5))
-
-    sns.barplot(
-        data=df_sorted,
-        x="foveation",
-        y=f"mean_{metric}",
-        hue="foveation",
-        order=FOVEATION_ORDER,
-        palette = sns.color_palette("colorblind", len(FOVEATION_ORDER))
-    )
-
-    values = df_sorted[f"mean_{metric}"]
-
-    plt.ylim(values.min() - 0.3, values.max() + 0.3)
-
-    for i, val in enumerate(values):
-        plt.text(
-            i,
-            val + 0.05,
-            f"{val:.2f}",
-            ha="center",
-            va="bottom",
-            fontsize=9
-        )
-
-    plt.ylabel(f"Mean kNN {metric.upper()} Accuracy (%)")
-    plt.xlabel("Foveation Method")
-
-    plt.title(f"Pretraining Comparison (Mean kNN {metric.upper()} over K)")
-
-    plt.xticks(rotation=25)
-
-    plt.grid(axis="y", linestyle="--", alpha=0.4)
-
-    out_path = FIG_DIR / "central_knn" /f"knn_mean_{metric}.pdf"
-
-    plt.tight_layout()
-    plt.savefig(out_path, bbox_inches="tight")
-    plt.close()
-
-    print(f"Saved figure → {out_path}")
-
-    
-def plot_linear_eval_heatmap():
-
-    df = load_analysis_data("linear_eval_processed")
-
-    table = df.pivot_table(
-        index=["category", "dataset"],
-        columns="foveation",
-        values="linear_acc1_best"
-    )
-    
-    table = fix_dataset_order_in_table(table)
-
-    table = table[FOVEATION_ORDER]
-
-    datasets = table.index.get_level_values("dataset")
-    categories = table.index.get_level_values("category")
-
-    values = table.values
-    
-    annot = values.astype(str)
-    for i in range(values.shape[0]):
-        best = np.argmax(values[i])
-        
-        for j in range(values.shape[1]):
-            if j == best:
-                annot[i, j] = f"$\\bf{{{values[i,j]:.1f}}}$"
-            else:
-                annot[i, j] = f"{values[i,j]:.1f}"
-    
-    plt.figure(figsize=(9,7))
-
-    ax = sns.heatmap(
-        values,
-        annot=annot,
-        fmt="",
-        cmap="viridis",
-        linewidths=0.5,
-        cbar_kws={"label": "Linear-Probe Accuracy (%)"},
-        annot_kws={"size":10}
-    )
-
-    ax.set_xticklabels(
-        ["base","crop","blur","cm"],
-        rotation=0
-    )
-    ax.set_yticklabels(datasets, rotation=0)
-
-    ax.set_xlabel("Foveation Method")
-    ax.set_ylabel("Dataset")
-    ax.set_title("Linear Probe Accuracy Across Datasets")
-        
-    category_changes = []
-
-    prev = categories[0]
-
-    for i, cat in enumerate(categories):
-        if cat != prev:
-            category_changes.append(i)
-            prev = cat
-
-    for y in category_changes:
-        ax.axhline(y, color="white", lw=4)
-
-    plt.tight_layout()
-    out_path = FIG_DIR / "central_linear_eval" / "linear_eval_heatmap.pdf"
-    plt.savefig(out_path, bbox_inches="tight")
-    plt.close()
-    print(f"Saved figure → {out_path}")
-    
-
-def plot_delta_to_baseline():
-
-    df = load_analysis_data("linear_eval_processed")
-
-    table = df.pivot_table(
-        index=["category", "dataset"],
-        columns="foveation",
-        values="linear_acc1_best"
-    )
-
-    table = fix_dataset_order_in_table(table)
-
-    table = table[FOVEATION_ORDER]
-
-    baseline = table["base"]
-
-    delta = table.subtract(baseline, axis=0)
-
-    delta = delta.drop(columns=["base"])
-
-    datasets = delta.index.get_level_values("dataset")
-    values = delta.values
-
-    plt.figure(figsize=(9,7))
-
-    ax = sns.heatmap(
-        values,
-        annot=True,
-        fmt=".2f",
-        cmap="coolwarm",
-        center=0,
-        linewidths=0.5,
-        cbar_kws={"label": "Δ Accuracy"}
-    )
-
-    ax.set_xticklabels(
-        ["crop","blur","cm"],
-        rotation=0
-    )
-    ax.set_yticklabels(datasets, rotation=0)
-
-    ax.set_xlabel("Foveation Method")
-    ax.set_ylabel("Dataset")
-    ax.set_title("Improvement over Baseline")
-
-    plt.tight_layout()
-
-    out_path = FIG_DIR / "central_linear_eval" / "linear_eval_delta.pdf"
-    plt.savefig(out_path, bbox_inches="tight")
-    plt.close()
-
-    print(f"Saved figure → {out_path}")
-    
-    
-def plot_category_deltas():
-    
-    df = load_analysis_data("linear_eval_processed")
-
-    avg = (
-        df.groupby(["category", "foveation"])["linear_acc1_best"]
-        .mean()
-        .reset_index()
-    )
-
-    baseline = avg[avg["foveation"] == "base"][
-        ["category", "linear_acc1_best"]
-    ].rename(columns={"linear_acc1_best": "baseline_acc"})
-
-    avg = avg.merge(baseline, on="category")
-
-    avg["delta"] = avg["linear_acc1_best"] - avg["baseline_acc"]
-
-    plt.figure(figsize=(8,5))
-
-    ax = sns.barplot(
-        data=avg,
-        x="category",
-        y="delta",
-        hue="foveation",
-        hue_order=FOVEATION_ORDER,
-        palette = sns.color_palette("colorblind", len(FOVEATION_ORDER))
-    )
-
-    ax.axhline(0, color="black", lw=1)
-
-    ax.set_ylabel("Δ Accuracy vs Baseline (%)")
-    ax.set_xlabel("")
-    ax.set_title("Average Improvement per Category")
-
-    plt.xticks(rotation=20)
-
-    plt.tight_layout()
-
-    out_path = FIG_DIR / "central_linear_eval" / "linear_eval_category_delta.pdf"
-    plt.savefig(out_path, bbox_inches="tight")
-    plt.close()
-
-    print(f"Saved figure → {out_path}")
-    
 
 def plot_linear_eval_foveated():
     
@@ -441,19 +214,21 @@ def plot_ooc_delta_heatmap():
 
     set_thesis_style()
 
-    df = load_analysis_data("ooc_results")
+    df = load_analysis_data("full_ooc_results")
 
-    df["model"] = df["model"].str.replace("-nosal", "", regex=False)
+    df["foveation"] = df["foveation"].str.replace("-nosal", "", regex=False)
+    df_plot = df[["foveation", "original_acc", "object_acc", "ooc_acc"]].copy()
+    df_plot = df_plot.rename(columns={"original_acc": "Original", "object_acc": "Object-Only", "ooc_acc": "OOC"})
 
     # --- baseline ---
-    baseline = df[df["model"] == "base"].iloc[0]
+    baseline = df_plot[df_plot["foveation"] == "base"].iloc[0]
 
     # --- compute delta ---
-    df_delta = df.copy()
+    df_delta = df_plot.copy()
     for col in OOC_DATASET_ORDER:
-        df_delta[col] = df[col] - baseline[col]
+        df_delta[col] = df_plot[col] - baseline[col]
 
-    df_delta = df_delta.set_index("model")[OOC_DATASET_ORDER]
+    df_delta = df_delta.set_index("foveation")[OOC_DATASET_ORDER]
 
     # remove baseline row
     df_delta = df_delta.drop(index="base")
@@ -482,7 +257,7 @@ def plot_ooc_delta_heatmap():
     ax.grid(False)
     
     # --- title ---
-    plt.title("OOC Improvement over Baseline", fontsize=12, pad=60)
+    plt.title("OOC Improvements over Baseline", fontsize=12, pad=60)
 
     # --- baseline row (aligned, with background) ---
     for j, col in enumerate(OOC_DATASET_ORDER):
@@ -660,20 +435,23 @@ def plot_color_std_object_only():
     print(f"Saved → {out_path}")
     
     
-def plot_object_trend():
+def plot_object_or_ooc_trend(variant):
     
     set_thesis_style()
+    
+    if variant not in ["Object-Only", "OOC"]:
+        raise ValueError("Invalid dataset variant given.")
 
-    df = load_analysis_data("ooc_results")
+    df = load_analysis_data("full_ooc_results")
+    
+    df = df[["foveation", "original_acc", "object_acc", "ooc_acc"]].copy()
+    df = df.rename(columns={"original_acc": "Original", "object_acc": "Object-Only", "ooc_acc": "OOC"})
+    df["foveation"] = df["foveation"].str.replace("-nosal", "", regex=False)
+    
 
-    # remove variants
-    df = df[~df["model"].str.contains("__")]
+    df = df[["foveation", variant]].copy()
 
-    df["model"] = df["model"].str.replace("-nosal", "", regex=False)
-
-    df = df[["model", "object"]].copy()
-
-    df[["type", "strength"]] = df["model"].apply(
+    df[["type", "strength"]] = df["foveation"].apply(
         lambda x: pd.Series(parse_model(x))
     )
 
@@ -682,7 +460,7 @@ def plot_object_trend():
 
     # --- scale ---
     df_plot = df_lines.copy()
-    df_plot["object"] *= 100
+    df_plot[variant] *= 100
 
     # --- plot ---
     plt.figure(figsize=(6, 4))
@@ -690,7 +468,7 @@ def plot_object_trend():
     sns.lineplot(
         data=df_plot,
         x="strength",
-        y="object",
+        y=variant,
         hue="type",
         palette=FOVEATION_PALETTE,
         marker="o",
@@ -698,15 +476,15 @@ def plot_object_trend():
     )
 
     # --- constant lines ---
-    base_val = df[df["model"] == "base"]["object"].values[0] * 100
-    crop_val = df[df["model"] == "crop"]["object"].values[0] * 100
+    base_val = df[df["foveation"] == "base"][variant].values[0] * 100
+    crop_val = df[df["foveation"] == "crop"][variant].values[0] * 100
 
     plt.axhline(base_val, linestyle="--", color=FOVEATION_PALETTE["base"], label="base")
     plt.axhline(crop_val, linestyle="--", color=FOVEATION_PALETTE["crop"], label="crop")
 
     # --- y-limits ---
-    y_min = min(df_plot["object"].min(), base_val, crop_val)
-    y_max = max(df_plot["object"].max(), base_val, crop_val)
+    y_min = min(df_plot[variant].min(), base_val, crop_val)
+    y_max = max(df_plot[variant].max(), base_val, crop_val)
 
     plt.ylim(y_min * 0.95, y_max * 1.05)
 
@@ -716,14 +494,14 @@ def plot_object_trend():
     # --- labels ---
     plt.xlabel("Foveation Strength")
     plt.ylabel("Accuracy (%)")
-    plt.title("Performance on Object-Only Images")
+    plt.title(f"Performance on {variant} Images")
 
     # --- legend ---
     plt.legend(frameon=True)
 
     plt.tight_layout()
 
-    out_path = FIG_DIR / "ooc_eval" / "object_trend.pdf"
+    out_path = FIG_DIR / "ooc_eval" / f"{variant}_trend.pdf"
     plt.savefig(out_path)
     plt.close()
 
@@ -734,30 +512,26 @@ def plot_gap(dataset_a, dataset_b):
     
     set_thesis_style()
     
-    dataset_map = {"ori": "original", "inp": "inpainted", "obj": "object", "ooc": "ooc"}
-    dataset_labels = {"ori": "Original", "inp": "Background-Only", "obj": "Object-Only", "ooc": "Out-of-Context"}
+    dataset_map = {"ori": "Original", "obj": "Object-Only", "ooc": "OOC"}
     
     if dataset_a not in dataset_map or dataset_b not in dataset_map:
         raise ValueError("Invalid dataset keys")
 
     col_a = dataset_map[dataset_a]
     col_b = dataset_map[dataset_b]
-
-    label_a = dataset_labels[dataset_a]
-    label_b = dataset_labels[dataset_b]
-    df = load_analysis_data("ooc_results")
-
-    # --- remove variants ---
-    df = df[~df["model"].str.contains("__")]
-
-    df["model"] = df["model"].str.replace("-nosal", "", regex=False)
+    
+    df = load_analysis_data("full_ooc_results")
+    
+    df = df[["foveation", "original_acc", "object_acc", "ooc_acc"]].copy()
+    df = df.rename(columns={"original_acc": "Original", "object_acc": "Object-Only", "ooc_acc": "OOC"})
+    df["foveation"] = df["foveation"].str.replace("-nosal", "", regex=False)
 
     # --- compute gap ---
     df["gap"] = df[col_a] - df[col_b]
 
-    df = df[["model", "gap"]].copy()
+    df = df[["foveation", "gap"]].copy()
 
-    df[["type", "strength"]] = df["model"].apply(
+    df[["type", "strength"]] = df["foveation"].apply(
         lambda x: pd.Series(parse_model(x))
     )
 
@@ -782,8 +556,8 @@ def plot_gap(dataset_a, dataset_b):
     )
 
     # --- reference lines ---
-    base_gap = df[df["model"] == "base"]["gap"].values[0] * 100
-    crop_gap = df[df["model"] == "crop"]["gap"].values[0] * 100
+    base_gap = df[df["foveation"] == "base"]["gap"].values[0] * 100
+    crop_gap = df[df["foveation"] == "crop"]["gap"].values[0] * 100
 
     plt.axhline(base_gap, linestyle="--", color=FOVEATION_PALETTE["base"], label="base")
     plt.axhline(crop_gap, linestyle="--", color=FOVEATION_PALETTE["crop"], label="crop")
@@ -799,8 +573,8 @@ def plot_gap(dataset_a, dataset_b):
 
     # --- labels ---
     plt.xlabel("Foveation Strength")
-    plt.ylabel(f"{label_a} − {label_b} Accuracy (%)")
-    plt.title(f"{label_a} vs {label_b} Gap")
+    plt.ylabel(f"{col_a} − {col_b} Accuracy (%)")
+    plt.title(f"{col_a} vs {col_b} Gap")
 
     # --- legend ---
     plt.legend(frameon=True)
@@ -814,19 +588,87 @@ def plot_gap(dataset_a, dataset_b):
 
     print(f"Saved → {out_path}")
     
+
+def export_ooc_background_summary():
+
+    bg_dir = DATA_DIR / "background_area"
+    full_ooc_path = DATA_DIR / "full_ooc_results.csv"
+
+    out_path = bg_dir / "background_summary.csv"
+
+    models = ["crop", "cm-nosal", "cm-strong"]
+
+    df_ooc = pd.read_csv(full_ooc_path)
+
+    rows = []
+
+    for model in models:
+
+        # ------------------
+        # background-area data
+        # ------------------
+        df = pd.read_csv(bg_dir / f"{model}.csv")
+
+        magnif_mean = df["area_ratio"].mean()
+        magnif_std  = df["area_ratio"].std()
+
+        fov_mean = df["fov_area"].mean()
+        fov_std  = df["fov_area"].std()
+
+        bg_ret = 1 - df["fov_area"]
+        bg_mean = bg_ret.mean()
+        bg_std  = bg_ret.std()
+
+        orig_mean = df["orig_area"].mean()
+        orig_std  = df["orig_area"].std()
+
+        # ------------------
+        # OOC gap
+        # ------------------
+        row_ooc = df_ooc[df_ooc["foveation"] == model].iloc[0]
+
+        object_acc = row_ooc["object_acc"]
+        ooc_acc = row_ooc["ooc_acc"]
+
+        ooc_gap = (object_acc - ooc_acc) * 100
+
+        rows.append({
+            "model": model,
+
+            "orig_area_mean": orig_mean,
+            "orig_area_std": orig_std,
+
+            "fov_area_mean": fov_mean,
+            "fov_area_std": fov_std,
+
+            "background_retained_mean": bg_mean,
+            "background_retained_std": bg_std,
+
+            "magnification_mean": magnif_mean,
+            "magnification_std": magnif_std,
+
+            "object_acc": object_acc,
+            "ooc_acc": ooc_acc,
+            "ooc_gap_pp": ooc_gap,
+        })
+
+    df_summary = pd.DataFrame(rows)
+    df_summary.to_csv(out_path, index=False)
+    print(f"Saved → {out_path}")
+    
     
 def plot_model_ooc_confidence():
     
     set_thesis_style()
 
-    models = ["base", "cm-strong"]
+    models = ["base", "crop", "cm-strong"]
 
     dfs = []
 
     for model in models:
         model_path = DATA_DIR / "ooc_per_sample" / model
 
-        for d in OOC_DATASET_ORDER:
+        for d in ["original", "inpainted", "object", "ooc"]:
             path = model_path / f"{model}_{d}.csv"
 
             df = pd.read_csv(path)
@@ -878,8 +720,42 @@ def plot_model_ooc_confidence():
         ax.set_xlim(0, 1)
         ax.grid(False)
 
+    # --- add mean confidence annotation per subplot ---
+    for i, model in enumerate(models):
+        for j, dataset in enumerate(["original", "inpainted", "object", "ooc"]):
+            ax = g.axes[i, j]
+            subset = df_all[
+                (df_all["model"] == model) &
+                (df_all["dataset"] == dataset)
+            ]
+            vals_correct = subset[
+                subset["correct"]
+            ]["conf_top1"].values
+            vals_incorrect = subset[
+                ~subset["correct"]
+            ]["conf_top1"].values
+            mu_correct = vals_correct.mean()
+            mu_incorrect = vals_incorrect.mean()
+            txt = (
+                f"μ(correct)={mu_correct:.2f}\n"
+                f"μ(incorrect)={mu_incorrect:.2f}"
+            )
+            ax.text(
+                0.97, 0.97,
+                txt,
+                transform=ax.transAxes,
+                ha="right",
+                va="top",
+                fontsize=8,
+                bbox=dict(
+                    facecolor="white",
+                    alpha=0.8,
+                    edgecolor="none"
+                )
+            )
+        
     plt.suptitle(
-        "Confidence Distributions: Baseline vs CM-Strong",
+        "Confidence Distributions: Baseline vs Crop vs CM-Strong",
         fontsize=13,
         y=0.98
     )
@@ -895,77 +771,172 @@ def plot_model_ooc_confidence():
     print(f"Saved → {out_path}")
     
     
-def plot_ooc_confidence_gap(mode="correct"):
+def plot_ooc_confidence_gaps(gap_mode=1):
 
     set_thesis_style()
 
-    models = [
-        "base", "crop",
-        "blur-nosal", "blur-light", "blur-strong",
-        "cm-nosal", "cm-light", "cm-strong"
-    ]
-
-    df = compute_confidence_gap(models, mode=mode)
-
-    # --- clean names ---
-    df["model"] = df["model"].str.replace("-nosal", "", regex=False)
-
-    df[["type", "strength"]] = df["model"].apply(
-        lambda x: pd.Series(parse_model(x))
-    )
-
-    df_plot = df[df["type"].isin(["blur", "cm"])].copy()
-    df_plot["gap"] *= 100
-
-    # --- plot ---
-    plt.figure(figsize=(6, 4))
-
-    sns.lineplot(
-        data=df_plot,
-        x="strength",
-        y="gap",
-        hue="type",
-        palette=FOVEATION_PALETTE,
-        marker="o",
-        errorbar=None
-    )
-
-    # --- baselines ---
-    base_gap = df[df["model"] == "base"]["gap"].values[0] * 100
-    crop_gap = df[df["model"] == "crop"]["gap"].values[0] * 100
-
-    plt.axhline(base_gap, linestyle="--", color=FOVEATION_PALETTE["base"], linewidth=2, label="base")
-    plt.axhline(crop_gap, linestyle="--", color=FOVEATION_PALETTE["crop"], linewidth=2, label="crop")
-
-    plt.axhline(0, linestyle=":", color="gray", linewidth=1)
+    df = load_analysis_data("full_ooc_results")
+    df["foveation"] = (df["foveation"].str.replace("-nosal", "", regex=False))
+    df = df.rename(columns={"foveation":"model"})
     
-    # --- y-limits ---
-    y_min = min(df_plot["gap"].min(), base_gap, crop_gap)
-    y_max = max(df_plot["gap"].max(), base_gap, crop_gap)
+    if gap_mode == 1:
+        correct_a = "original_conf_correct"
+        correct_b = "object_conf_correct"
+        incorrect_a = "original_conf_incorrect"
+        incorrect_b = "object_conf_incorrect"
+        title = "Original → Object"
+    elif gap_mode == 2:
+        correct_a = "object_conf_correct"
+        correct_b = "ooc_conf_correct"
+        incorrect_a = "object_conf_incorrect"
+        incorrect_b = "ooc_conf_incorrect"
+        title = "Object → OOC"
+    elif gap_mode == 3:
+        correct_a = "original_conf_correct"
+        correct_b = "ooc_conf_correct"
+        incorrect_a = "original_conf_incorrect"
+        incorrect_b = "ooc_conf_incorrect"
+        title = "Original → OOC"
+    else:
+        raise ValueError("gap_mode must be 1,2,3")
 
-    plt.ylim(y_min - 0.5, y_max * 1.05)
+    # compute gaps
+    df["gap_correct"] = (df[correct_a] - df[correct_b]) * 100
+    df["gap_incorrect"] = (df[incorrect_a] - df[incorrect_b]) * 100
+    df[["type","strength"]] = df["model"].apply(lambda x: pd.Series(parse_model(x)))
+    df_plot = df[df["type"].isin(["blur","cm"])].copy()
 
-    # --- axis ---
-    plt.xticks([2, 3, 4], ["light", "medium", "strong"])
+    fig, axes = plt.subplots(1,2, figsize=(10,4), sharex=True)
+    gap_specs = [("gap_correct", "Correct Predictions"), ("gap_incorrect", "Incorrect Predictions")]
 
-    plt.xlabel("Foveation Strength")
-    plt.ylabel("Confidence Gap (%)")
+    for ax, (gap_col, panel_title) in zip(axes, gap_specs):
 
-    title_map = {
-        "correct": "OOC Confidence Drop (Correct Predictions)",
-        "incorrect": "OOC Confidence Drop (Incorrect Predictions)",
-        "all": "OOC Confidence Drop (All Predictions)"
-    }
-    plt.title(title_map[mode])
+        sns.lineplot(
+            data=df_plot,
+            x="strength",
+            y=gap_col,
+            hue="type",
+            palette=FOVEATION_PALETTE,
+            marker="o", 
+            errorbar=None, 
+            ax=ax
+        )
 
-    plt.legend(frameon=True)
+        base_gap = df[df["model"]=="base"][gap_col].values[0]
+        crop_gap = df[df["model"]=="crop"][gap_col].values[0]
+
+        ax.axhline(base_gap, linestyle="--", color=FOVEATION_PALETTE["base"], linewidth=2)
+        ax.axhline(crop_gap, linestyle="--", color=FOVEATION_PALETTE["crop"],linewidth=2)
+        ax.axhline(0, linestyle=":", color="gray")
+        ax.set_xticks([2,3,4])
+        ax.set_xticklabels(["light", "medium", "strong"])
+        ax.set_xlabel("Foveation Strength")
+        ax.set_ylabel("Confidence Drop (%)")
+        ax.set_title(panel_title)
+        ax.legend().remove()
+
+    # shared legend
+    handles, labels = (
+        axes[0]
+        .get_legend_handles_labels()
+    )
+
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        ncol=4,
+        frameon=True
+    )
+
+    plt.suptitle(f"Confidence Drop from {title}", y=1.02)
 
     plt.tight_layout()
-
-    out_path = FIG_DIR / "ooc_confidence" / f"ooc_confidence_gap_{mode}.pdf"
-    plt.savefig(out_path)
+    out_path = (FIG_DIR / "ooc_confidence" / f"confidence_gap_pair_{gap_mode}.pdf")
+    plt.savefig(out_path, bbox_inches="tight")
     plt.close()
+    print(f"Saved → {out_path}")
+    
 
+def plot_confidence_dynamics():
+
+    set_thesis_style()
+    
+    df = load_analysis_data("full_ooc_results")
+    
+    df["foveation"] = (df["foveation"].str.replace("-nosal", "", regex=False))
+    df["group"] = (df["foveation"].apply(get_group))
+    
+    # average over strengths
+    df_plot = (
+        df.groupby("group")
+        [[
+            "original_conf_correct",
+            "object_conf_correct",
+            "ooc_conf_correct",
+            "original_conf_incorrect",
+            "object_conf_incorrect",
+            "ooc_conf_incorrect"
+        ]]
+        .mean()
+        .reset_index()
+    )
+    
+    group_order = ["base", "crop", "blur", "cm"]
+    df_plot["group"] = pd.Categorical(df_plot["group"], categories=group_order, ordered=True)
+    df_plot = (df_plot.sort_values("group"))
+    
+    fig, axes = plt.subplots(1, 2, figsize=(10,4), sharex=True)
+    x = [0,1,2]
+    conf_specs = [
+        (
+            [
+                "original_conf_correct",
+                "object_conf_correct",
+                "ooc_conf_correct"
+            ],
+            "Correct Predictions"
+        ),
+        (
+            [
+                "original_conf_incorrect",
+                "object_conf_incorrect",
+                "ooc_conf_incorrect"
+            ],
+            "Incorrect Predictions"
+        )
+    ]
+    for ax, (cols, title) in zip(axes, conf_specs):
+        for _, row in (df_plot.iterrows()):
+            group = row["group"]
+            y = [row[cols[0]], row[cols[1]],row[cols[2]]]
+            ax.plot(
+                x,
+                y,
+                marker="o",
+                linewidth=2,
+                label=group,
+                color=FOVEATION_PALETTE[group]
+            )
+        ax.set_xticks(x)
+        ax.set_xticklabels(["Original", "Object", "OOC"])
+        ax.set_xlabel("Dataset")
+        ax.set_ylabel("Confidence")
+        ax.set_title(title)
+    
+    handles, labels = (axes[0].get_legend_handles_labels())
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        ncol=4,
+        frameon=True
+    )
+    plt.suptitle("Confidence Dynamics Across Context Manipulations",y=1.02)
+    plt.tight_layout()
+    out_path = (FIG_DIR / "ooc_confidence" / "confidence_dynamics.pdf")
+    plt.savefig(out_path, bbox_inches="tight")
+    plt.close()
     print(f"Saved → {out_path}")
     
     
@@ -973,7 +944,7 @@ def plot_small_objects_accuracy():
     
     set_thesis_style()
 
-    SMALL_THRESH = 0.05
+    SMALL_THRESH = 0.13229863271117204  # 41% quantile of relative_mask_area following COCO definitions 
 
     models = [
         "base", "crop",
@@ -1004,17 +975,22 @@ def plot_small_objects_accuracy():
         .mean()
         .reset_index()
     )
-
+    
     # scale to %
     df_acc["accuracy"] = df_acc["correct"] * 100
 
+    # --- baseline delta ---
+    base_acc = df_acc.loc[df_acc["model"]=="base", "accuracy"].iloc[0]
+    df_acc["delta"] = df_acc["accuracy"] - base_acc
+
     # clean names
     df_acc["model"] = df_acc["model"].str.replace("-nosal", "", regex=False)
+    df_acc = df_acc[df_acc["model"] != "base"]
 
     # enforce order
     df_acc["model"] = pd.Categorical(
         df_acc["model"],
-        categories=EXACT_FOVEATION_ORDER,
+        categories=[m for m in EXACT_FOVEATION_ORDER if m != "base"],
         ordered=True
     )
     df_acc = df_acc.sort_values("model")
@@ -1027,21 +1003,35 @@ def plot_small_objects_accuracy():
     sns.barplot(
         data=df_acc,
         x="model",
-        y="accuracy",
+        y="delta",
         hue="group",
         palette=FOVEATION_PALETTE
     )
 
     # value labels
-    for i, v in enumerate(df_acc["accuracy"]):
-        plt.text(i, v + 0.5, f"{v:.1f}", ha="center", fontsize=9)
+    for i, v in enumerate(df_acc["delta"]):
+        if v >= 0:
+            y = v + 0.35
+            va = "bottom"
+        else:
+            y = v + 1.4
+            va = "top"
+        plt.text(
+            i,
+            y,
+            f"{v:+.1f}",
+            ha="center",
+            va=va,
+            fontsize=9
+        )
 
-    plt.ylabel("Accuracy (%)")
+    plt.ylabel(f"Δ Accuracy vs Baseline ({base_acc:.3f}%)")
     plt.xlabel("Model")
-    plt.title(f"Performance on Small Objects (mask_area ≤ {SMALL_THRESH})")
+    plt.title(f"Performance on Small Objects (mask_area ≤ {SMALL_THRESH:.3f})")
     
+    plt.axhline(0, linestyle=":", linewidth=1, alpha=0.8, color="gray")
     plt.xticks(rotation=0)
-    plt.ylim(0, df_acc["accuracy"].max() + 5)
+    plt.ylim(min(-1, df_acc["delta"].min()-0.5), df_acc["delta"].max() + 1.5)
     
     plt.legend().remove()
 
@@ -1075,7 +1065,7 @@ def plot_accuracy_vs_size():
     df_all["model"] = df_all["model"].str.replace("-nosal", "", regex=False)
 
     # --- binning ---
-    n_bins = 12
+    n_bins = 10
     df_all["size_bin"] = pd.qcut(df_all["mask_area"], q=n_bins, duplicates="drop")
 
     # compute bin centers
@@ -1123,6 +1113,7 @@ def plot_accuracy_vs_size_by_strength(method="blur"):
     set_thesis_style()
 
     models = [
+        "base",
         "blur-nosal", "blur-light", "blur-strong",
         "cm-nosal", "cm-light", "cm-strong"
     ]
@@ -1147,7 +1138,7 @@ def plot_accuracy_vs_size_by_strength(method="blur"):
     )
 
     # --- filter method ---
-    df_all = df_all[df_all["type"] == method]
+    df_all = df_all[(df_all["type"] == method) | (df_all["model"]=="base")]
 
     # --- map strength labels ---
     strength_map = {
@@ -1155,22 +1146,35 @@ def plot_accuracy_vs_size_by_strength(method="blur"):
         3: "medium",
         4: "strong"
     }
-    df_all["strength_label"] = df_all["strength"].map(strength_map)
+    df_all["strength_label"] = df_all["strength"].map(strength_map).fillna("base")
 
     # --- binning ---
-    n_bins = 12
+    n_bins = 10
     df_all["size_bin"] = pd.qcut(df_all["mask_area"], q=n_bins, duplicates="drop")
     df_all["bin_center"] = df_all["size_bin"].apply(lambda x: x.mid)
 
     # --- aggregate ---
     df_plot = (
         df_all
-        .groupby(["strength_label", "bin_center"])["correct"]
+        .groupby(["model","strength_label","bin_center"])["correct"]
         .mean()
         .reset_index()
     )
 
     df_plot["accuracy"] = df_plot["correct"] * 100
+    # --- compute baseline per bin ---
+    base_df = (
+        df_plot[df_plot["model"]=="base"]
+        [["bin_center","accuracy"]]
+        .rename(columns={"accuracy":"base_acc"})
+    )
+
+    df_plot = df_plot.merge(base_df, on="bin_center")
+
+    df_plot["delta"] = (df_plot["accuracy"] - df_plot["base_acc"])
+
+    # remove baseline itself from plot
+    df_plot = df_plot[df_plot["model"]!="base"]
 
     # --- ordering ---
     strength_order = ["light", "medium", "strong"]
@@ -1197,15 +1201,17 @@ def plot_accuracy_vs_size_by_strength(method="blur"):
     sns.lineplot(
         data=df_plot,
         x="bin_center",
-        y="accuracy",
+        y="delta",
         hue="strength_label",
         palette=palette,
         marker="o"
     )
 
     plt.xlabel("Object Size (mask_area)")
-    plt.ylabel("Accuracy (%)")
-    plt.title(f"{method.upper()} – Accuracy vs Object Size")
+    plt.ylabel("Δ Accuracy vs Baseline (%)")
+    plt.title(f"{method.upper()}")
+    
+    plt.axhline(0, linestyle=":", linewidth=1, alpha=0.8, color="gray")
 
     plt.legend(title="Strength", frameon=False)
 
@@ -1216,63 +1222,7 @@ def plot_accuracy_vs_size_by_strength(method="blur"):
     plt.close()
 
     print(f"Saved → {out_path}")
-        
-    
-def export_linear_eval_latex():
 
-    table = build_linear_eval_table()
-    table = add_category_averages(table)
-    
-    styled_rows = []
-    for idx, row in table.iterrows():
-        styled_rows.append(highlight_best(row))
-
-    styled = pd.DataFrame(
-        styled_rows,
-        index=table.index,
-        columns=table.columns
-    )
-
-    styled = styled.reset_index()
-
-    styled = styled.rename(columns={
-        "dataset": "Dataset",
-        "category": "Category"
-    })
-
-    # ---- generate latex ----
-    latex = styled.to_latex(
-        index=False,
-        escape=False
-    )
-
-    # ---- insert category separators ----
-    lines = latex.split("\n")
-    new_lines = []
-
-    prev_category = None
-
-    for line in lines:
-
-        if "&" in line and not line.startswith("\\"):
-
-            category = line.split("&")[0].strip()
-
-            if prev_category is not None and category != prev_category and category != "":
-                new_lines.append("\\midrule")
-
-            prev_category = category if category != "" else prev_category
-
-        new_lines.append(line)
-
-    latex = "\n".join(new_lines)
-
-    out_path = FIG_DIR / "central_linear_eval" / "linear_eval_table.tex"
-
-    with open(out_path, "w") as f:
-        f.write(latex)
-
-    print(f"Saved LaTeX table → {out_path}")
     
     
 if __name__ == "__main__":
@@ -1280,17 +1230,19 @@ if __name__ == "__main__":
     #plot_lr_sweep_knn_mean()
     #plot_linear_eval_foveated()
     #plot_delta_to_central_gaze()
+    
     #plot_ooc_delta_heatmap()
     #plot_inpainted_trend()
     #plot_color_std_object_only()
-    #plot_object_trend()
+    #plot_object_or_ooc_trend("Object-Only") # Object-Only or OOC    
     #plot_gap("obj", "ooc") # "ori", "inp", "obj", "ooc"
+    #export_ooc_background_summary()
     #plot_model_ooc_confidence()
-    #plot_ooc_confidence_gap(mode="all") # modes: correct, incorrect, all 
+    #plot_ooc_confidence_gaps(1) # 1,2,3
+    #plot_confidence_dynamics()
     #plot_small_objects_accuracy()
     #plot_accuracy_vs_size()
     #plot_accuracy_vs_size_by_strength(method="blur") # blur or cm
     #plot_accuracy_vs_size_by_strength(method="cm")
-    
-    # plot crowding results??
+
     
