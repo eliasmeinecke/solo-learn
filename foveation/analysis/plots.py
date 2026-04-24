@@ -10,6 +10,7 @@ from .utils import (
     set_thesis_style, 
     parse_model,
     get_group,
+    get_foveation_palette,
     FOVEATION_ORDER,
     EXACT_FOVEATION_ORDER,
     FOVEATION_PALETTE,
@@ -1212,17 +1213,161 @@ def plot_accuracy_vs_size_by_strength(method="blur"):
     plt.title(f"{method.upper()}")
     
     plt.axhline(0, linestyle=":", linewidth=1, alpha=0.8, color="gray")
-
     plt.legend(title="Strength", frameon=False)
-
     plt.tight_layout()
-
+    
     out_path = FIG_DIR / "size_analysis" / f"{method}_size_vs_accuracy.pdf"
     plt.savefig(out_path)
     plt.close()
-
     print(f"Saved → {out_path}")
+    
 
+def plot_crowding_trend(condition="ax", normalize=True):
+    
+    set_thesis_style()
+
+    df = load_analysis_data("crowding_results")
+    df["foveation"] = df["foveation"].str.replace("-nosal", "", regex=False)
+    # --- select relevant columns ---
+    acc_col = f"{condition}_acc"
+    # --- optional normalization ---
+    if normalize:
+        df["acc_norm"] = df.groupby("foveation")[acc_col].transform(
+            lambda x: x / x.iloc[0]  # normalize by distance=5
+        )
+        y = "acc_norm"
+        ylabel = f"Normalized Accuracy ({condition})"
+    else:
+        y = acc_col
+        ylabel = f"Accuracy ({condition})"
+    palette = get_foveation_palette()
+    # --- plot ---
+    plt.figure(figsize=(7, 4))
+    sns.lineplot(
+        data=df,
+        x="distance",
+        y=y,
+        hue="foveation",
+        palette=palette,
+        marker="o"
+    )
+    plt.xlabel("Flanker Distance")
+    plt.ylabel(ylabel)
+    plt.title(f"Accuracy Trend vs Distance ({condition})")
+    plt.legend(title="Foveation", frameon=False)
+    plt.tight_layout()
+    
+    out_path = FIG_DIR / "crowding" / f"{condition}_fdistance_trend.pdf"
+    plt.savefig(out_path)
+    plt.close()
+    print(f"Saved → {out_path}")
+    
+    
+def plot_crowding_condition_trend(distance=20):
+
+    set_thesis_style()
+    df = load_analysis_data("crowding_results")
+    df["foveation"] = df["foveation"].str.replace("-nosal", "", regex=False)
+    # --- filter distance ---
+    df = df[df["distance"] == distance].copy()
+    
+    # --- reshape to long format ---
+    df_long = df.melt(
+        id_vars=["foveation"],
+        value_vars=["a_acc", "ax_acc", "xax_acc"],
+        var_name="condition",
+        value_name="accuracy"
+    )
+    # clean condition names
+    df_long["condition"] = df_long["condition"].str.replace("_acc", "")
+    # enforce order
+    condition_order = ["a", "ax", "xax"]
+    df_long["condition"] = pd.Categorical(
+        df_long["condition"],
+        categories=condition_order,
+        ordered=True
+    )
+    # palette
+    palette = get_foveation_palette()
+    # --- plot ---
+    plt.figure(figsize=(7, 4))
+    sns.lineplot(
+        data=df_long,
+        x="condition",
+        y="accuracy",
+        hue="foveation",
+        palette=palette,
+        marker="o"
+    )
+    plt.xlabel("Condition")
+    plt.ylabel("Accuracy")
+    plt.title(f"Accuracy Trend at Distance = {distance}")
+    plt.legend(title="Foveation", frameon=False)
+    plt.tight_layout()
+    out_path = FIG_DIR / "crowding" / f"condition_trend_d{distance}.pdf"
+    plt.savefig(out_path)
+    plt.close()
+    print(f"Saved → {out_path}")
+    
+
+def plot_crowding_vs_strength(distance=20, mode="a_xax"):
+    """
+    modes: "a_ax", "ax_xax", "a_xax"
+    """
+    set_thesis_style()
+    df = load_analysis_data("crowding_results")
+    df["foveation"] = df["foveation"].str.replace("-nosal", "", regex=False)
+    df = df[df["distance"] == distance].copy()
+    # --- normalize ---
+    df["ax_rel"] = df["ax_acc"] / df["a_acc"]
+    df["xax_rel"] = df["xax_acc"] / df["a_acc"]
+    # --- compute crowding effect ---
+    if mode == "a_ax":
+        df["crowding"] = df["ax_rel"] - 1
+        title = "Crowding Effect (a → ax)"
+    elif mode == "ax_xax":
+        df["crowding"] = df["xax_rel"] - df["ax_rel"]
+        title = "Crowding Effect (ax → xax)"
+    elif mode == "a_xax":
+        df["crowding"] = df["xax_rel"] - 1
+        title = "Crowding Effect (a → xax)"
+    else:
+        raise ValueError(mode)
+    # --- extract strength ---
+    def parse_strength(name):
+        if "light" in name:
+            return "light"
+        elif "strong" in name:
+            return "strong"
+        elif "blur" in name or "cm" in name:
+            return "medium"
+        else:
+            return "constant"
+    df["strength"] = df["foveation"].apply(parse_strength)
+    # ordering
+    order = ["constant", "light", "medium", "strong"]
+    df["strength"] = pd.Categorical(df["strength"], categories=order, ordered=True)
+    # --- plot ---
+    plt.figure(figsize=(6, 4))
+    sns.stripplot(
+        data=df,
+        x="strength",
+        y="crowding",
+        hue="foveation",
+        palette=get_foveation_palette(),
+        size=8,
+        jitter=False
+    )
+    plt.axhline(0, linestyle=":", color="gray", linewidth=1)
+    plt.xlabel("Foveation Strength")
+    plt.ylabel("Δ Accuracy (relative)")
+    plt.title(f"{title} at Distance = {distance}")
+    plt.legend(title="Model", frameon=False, bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.tight_layout()
+    out_path = FIG_DIR / "crowding" / f"{mode}_vs_strength.pdf"
+    plt.savefig(out_path)
+    plt.close()
+    print(f"Saved → {out_path}")
     
     
 if __name__ == "__main__":
@@ -1245,4 +1390,6 @@ if __name__ == "__main__":
     #plot_accuracy_vs_size_by_strength(method="blur") # blur or cm
     #plot_accuracy_vs_size_by_strength(method="cm")
 
-    
+    #plot_crowding_trend(condition="ax", normalize=True) # ax or xax
+    plot_crowding_condition_trend()
+    #plot_crowding_vs_strength(mode="a_ax") # a_ax, a_xax, ax_xax

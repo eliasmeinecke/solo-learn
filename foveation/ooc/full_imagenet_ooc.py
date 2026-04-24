@@ -15,54 +15,33 @@ from pycocotools import mask as mask_utils
 from torch.utils.data import Dataset, DataLoader
 from torchvision.datasets import ImageFolder
 from torchvision.transforms import PILToTensor
-import torchvision.transforms.v2 as v2
 
-from foveation.factory import setup_exact_foveation
-from foveation.ooc.ooc_utils import load_model, IdentityFoveation
+from foveation.utils import ImageNetMaskLoader, build_model_and_foveation, T_POST, IMAGENET_VAL_PATH, MASK_JSON_PATH
 from foveation.mask_centroids import fill_mask_holes_floodfill
 
+INPAINTED_PATH = Path("/home/data/elias/ImageNet-OOC1k_flattened/inpainted")
+RESULTS_PATH = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/full_ooc_results.csv")
+BG_OUT_DIR = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/background_area")
+BG_OUT_DIR.mkdir(parents=True,exist_ok=True)
+    
+    
 class ImageNetValOOC(Dataset):
 
     def __init__(self, mode="original", seed=42, transform=PILToTensor()): # original, object, ooc
 
         self.mode = mode
         self.imagenet = ImageFolder(root=IMAGENET_VAL_PATH)
+        self.mask_loader = ImageNetMaskLoader()
         self.transform = transform 
-
-        # --- load masks ---
-        with open(MASK_JSON_PATH, "r") as f:
-            mask_data = json.load(f)
-
-        self.mask_by_filename = {v["filename"]: v for v in mask_data.values()}
 
         # --- load inpainted pool ---
         self.inpainted_files = sorted(list(INPAINTED_PATH.glob("*.JPEG")))
-
         # random background assignment
         rng = np.random.RandomState(seed)
-
         self.bg_indices = rng.randint(0, len(self.inpainted_files), size=len(self.imagenet.samples))
 
     def __len__(self):
         return len(self.imagenet)
-
-    def get_mask(self, filename):
-        entry = self.mask_by_filename.get(filename)
-        if entry is None:
-            return None
-        mask = mask_utils.decode(
-            entry["rle"]
-        )
-        return mask.astype(bool)
-
-    def get_centroid(self, filename):
-        entry = self.mask_by_filename.get(filename)
-        if entry is None:
-            return (0.5, 0.5)
-        return (
-            entry["centroid"]["x_rel"],
-            entry["centroid"]["y_rel"]
-        )
 
     def create_background(self, img):
         imagenet_mean = np.array([0.485, 0.456, 0.406]) * 255
@@ -78,7 +57,7 @@ class ImageNetValOOC(Dataset):
         if self.mode == "original":
             return Image.fromarray(img)
         # load foreground mask
-        mask = self.get_mask(filename)
+        mask = self.mask_loader.get_mask(filename)
         if mask is None:
             return Image.fromarray(img)
         # safety if dimensions mismatch
@@ -105,7 +84,7 @@ class ImageNetValOOC(Dataset):
         img = self.load_image(idx)
         if self.transform:
             img = self.transform(img)
-        gaze = self.get_centroid(filename)
+        gaze = self.mask_loader.get_centroid(filename)
         gaze_tensor = torch.tensor(gaze, dtype=torch.float32)
         return img, label, gaze_tensor
     
@@ -117,17 +96,8 @@ def set_seed(seed):
     
 
 def evaluate_full_ooc(model, device, model_name, foveation):
-
     model.eval()
-
     model.to(device)
-
-    T_post = v2.Compose([
-        v2.Resize(256),
-        v2.CenterCrop(224),
-        v2.ToDtype(torch.float32, scale=True),
-        v2.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
-        ])
 
     def evaluate_mode(mode, seed=None):
 
@@ -157,7 +127,7 @@ def evaluate_full_ooc(model, device, model_name, foveation):
                 gaze_abs[:,1] *= H
 
                 img = foveation(img, gaze_abs)
-                img = T_post(img)
+                img = T_POST(img)
 
                 logits = model(img)
                 probs = torch.softmax(logits, dim=1)
@@ -278,7 +248,6 @@ def calculate_foveated_mask_areas(foveation, model_name):
         f"fov_area={df.fov_area.mean():.3f} | "
         f"background_retained={(1 - df.fov_area.mean()):.3f}"
     )
-
     return df
     
     
@@ -289,30 +258,16 @@ if __name__ == "__main__":
     parser.add_argument("--background", action="store_true")
     args = parser.parse_args()
     
-    IMAGENET_VAL_PATH = "/home/data/ILSVRC_real/val"
-    MASK_JSON_PATH = "/home/data/elias/imagenet_sam_masks/imagenet_val_masks_with_center.json"
-    INPAINTED_PATH = Path("/home/data/elias/ImageNet-OOC1k_flattened/inpainted")
-    RESULTS_PATH = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/full_ooc_results.csv")
-    BG_OUT_DIR = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/background_area")
-    BG_OUT_DIR.mkdir(parents=True,exist_ok=True)
-    
     SEEDS = [1,2,3]
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
     if args.background:
         for m in ["crop", "cm-nosal", "cm-strong"]:
-            fov = setup_exact_foveation(m)
+            _, fov = build_model_and_foveation(m, device)
             fov = fov.to(device)
             calculate_foveated_mask_areas(fov, m)
     else:
-        # foveation
-        if args.model in ["base", "dummy"]:
-            foveation = IdentityFoveation()
-        else:
-            foveation = setup_exact_foveation(args.model)
-        foveation = foveation.to(device)
-        model = load_model(args.model).to(device)
-        result = evaluate_full_ooc(model=model, device=device, model_name=args.model, foveation=foveation)
+        model, foveation = build_model_and_foveation(args.model, device)
+        result = evaluate_full_ooc(model, device, args.model, foveation)
         save_result(result)
-    

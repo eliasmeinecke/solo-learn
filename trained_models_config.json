@@ -1,39 +1,9 @@
 [
   {
-    "id": "8c585it0",
-    "name": "mocov3-ego4d-blur-strong-gpu-aug",
+    "id": "y9xhl4ce",
+    "name": "mocov3-ego4d-base-gpu-aug",
     "time_window": "15",
-    "foveation_type": "blur"
-  },
-  {
-    "id": "ey1tyyt1",
-    "name": "mocov3-ego4d-cm-strong-gpu-aug",
-    "time_window": "15",
-    "foveation_type": "cm"
-  },
-  {
-    "id": "p6kjtoq4",
-    "name": "mocov3-ego4d-cm-light-gpu-aug",
-    "time_window": "15",
-    "foveation_type": "cm"
-  },
-  {
-    "id": "8c7hvt4u",
-    "name": "mocov3-ego4d-blur-light-gpu-aug",
-    "time_window": "15",
-    "foveation_type": "blur"
-  },
-  {
-    "id": "cbg5z9s8",
-    "name": "mocov3-ego4d-cm-nosal-gpu-aug",
-    "time_window": "15",
-    "foveation_type": "cm"
-  },
-  {
-    "id": "rhtkva61",
-    "name": "mocov3-ego4d-blur-nosal-gpu-aug",
-    "time_window": "15",
-    "foveation_type": "blur"
+    "foveation_type": "none"
   },
   {
     "id": "u2ja20do",
@@ -42,9 +12,39 @@
     "foveation_type": "crop"
   },
   {
-    "id": "y9xhl4ce",
-    "name": "mocov3-ego4d-base-gpu-aug",
+    "id": "8c7hvt4u",
+    "name": "mocov3-ego4d-blur-light-gpu-aug",
     "time_window": "15",
-    "foveation_type": "none"
+    "foveation_type": "blur"
+  },
+  {
+    "id": "rhtkva61",
+    "name": "mocov3-ego4d-blur-nosal-gpu-aug",
+    "time_window": "15",
+    "foveation_type": "blur"
+  },  
+  {
+    "id": "8c585it0",
+    "name": "mocov3-ego4d-blur-strong-gpu-aug",
+    "time_window": "15",
+    "foveation_type": "blur"
+  },
+  {
+    "id": "p6kjtoq4",
+    "name": "mocov3-ego4d-cm-light-gpu-aug",
+    "time_window": "15",
+    "foveation_type": "cm"
+  },
+  {
+    "id": "cbg5z9s8",
+    "name": "mocov3-ego4d-cm-nosal-gpu-aug",
+    "time_window": "15",
+    "foveation_type": "cm"
+  },
+  {
+    "id": "ey1tyyt1",
+    "name": "mocov3-ego4d-cm-strong-gpu-aug",
+    "time_window": "15",
+    "foveation_type": "cm"
   }
 ]

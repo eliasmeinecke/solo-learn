@@ -1,0 +1,10 @@
+model,gaze_mode,accuracy
+base,central,0.40022
+crop,central,0.38186
+blur-light,central,0.39492
+blur-nosal,central,0.37076
+blur-strong,central,0.35762
+cm-light,central,0.3936
+cm-nosal,central,0.38978
+cm-strong,central,0.36788
+base,central,0.41016

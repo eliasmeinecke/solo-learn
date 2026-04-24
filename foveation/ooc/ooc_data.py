@@ -8,6 +8,8 @@ import cv2
 from torch.utils.data import Dataset
 from PIL import Image
 
+from foveation.utils import load_imagenet_class_map
+
 
 class OOCDatasetBase(Dataset):
     def __init__(self, root, transform=None, gaze_mode="mask"):
@@ -164,20 +166,6 @@ class OOCShuffledDataset(OOCDatasetBase):
         mixed = np.where(mask[..., None], obj, bg)
 
         return Image.fromarray(mixed.astype(np.uint8))
-    
-    
-def load_imagenet_class_map():
-    with open("imagenet_class_index.json") as f:
-        data = json.load(f)
-
-    # Format:
-    # {"0": ["n01440764", "tench"], ...}
-
-    mapping = {}
-    for idx, (synset, _) in data.items():
-        mapping[synset] = int(idx)
-
-    return mapping
 
 
 # helper functions to calculate relative gaze from mask
@@ -185,19 +173,13 @@ def get_largest_component(mask):
     """
     mask: binary numpy array (H,W)
     """
-
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8))
-
     if num_labels <= 1:
         return mask, None  # only background
-
     # stats: [label, x, y, w, h, area]
     areas = stats[1:, cv2.CC_STAT_AREA]
-
     largest_idx = 1 + np.argmax(areas)
-
     largest_mask = (labels == largest_idx).astype(np.uint8)
-
     return largest_mask
 
 
@@ -205,13 +187,10 @@ def fill_mask_holes_floodfill(mask):
     # https://learnopencv.com/filling-holes-in-an-image-using-opencv-python-c/
     mask_uint8 = (mask > 0).astype(np.uint8) * 255
     mask_padded = cv2.copyMakeBorder(mask_uint8, 1,1,1,1, cv2.BORDER_CONSTANT, value=0)
-
     h, w = mask_padded.shape
     ff_mask = np.zeros((h+2, w+2), np.uint8)
-
     cv2.floodFill(mask_padded, ff_mask, (0,0), 255)
     mask_inv = cv2.bitwise_not(mask_padded)
-    
     mask_filled = mask_uint8 | mask_inv[1:-1, 1:-1]
     return (mask_filled > 0).astype(np.uint8)
 

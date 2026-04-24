@@ -162,6 +162,23 @@ def set_thesis_style():
         # --- barplots ---
         "patch.edgecolor": "none",   # removes ugly borders
     })
+    
+
+def get_foveation_palette():
+    return {
+        # base
+        "base": "#4D4D4D",
+        # crop 
+        "crop": "#E69F00",
+        # blur
+        "blur-light":  "#A3C9A8",
+        "blur": "#4C956C",
+        "blur-strong": "#1B4332",
+        # cm
+        "cm-light":  "#CDB4DB",
+        "cm": "#9D4EDD",
+        "cm-strong": "#5A189A",
+    }
 
 
 def extract_foveation_type(df):
@@ -223,33 +240,53 @@ def add_foveation_order(df):
 
 
 def get_group(f):
-        if "blur" in f:
-            return "blur"
-        elif "cm" in f:
-            return "cm"
-        elif f == "crop":
-            return "crop"
-        else:
-            return "base"
+    if "blur" in f:
+        return "blur"
+    elif "cm" in f:
+        return "cm"
+    elif f == "crop":
+        return "crop"
+    else:
+        return "base"
         
         
 def parse_model(m):
-        if m == "base":
-            return "base", 0
-        if m == "crop":
-            return "crop", 1
-        if "blur" in m:
-            if "light" in m:
-                return "blur", 2
-            elif "strong" in m:
-                return "blur", 4
-            else:
-                return "blur", 3
-        if "cm" in m:
-            if "light" in m:
-                return "cm", 2
-            elif "strong" in m:
-                return "cm", 4
-            else:
-                return "cm", 3
-        return "other", -1
+    if m == "base":
+        return "base", 0
+    if m == "crop":
+        return "crop", 1
+    if "blur" in m:
+        if "light" in m:
+            return "blur", 2
+        elif "strong" in m:
+            return "blur", 4
+        else:
+            return "blur", 3
+    if "cm" in m:
+        if "light" in m:
+            return "cm", 2
+        elif "strong" in m:
+            return "cm", 4
+        else:
+            return "cm", 3
+    return "other", -1
+    
+    
+def parse_hard(name):
+    if "blur-light" in name:
+        return "blur-light"
+    if "blur-nosal" in name:
+        return "blur"
+    if "blur-strong" in name:
+        return "blur-strong"
+    if "cm-light" in name:
+        return "cm-light"
+    if "cm-nosal" in name:
+        return "cm"
+    if "cm-strong" in name:
+        return "cm-strong"
+    if "crop" in name:
+        return "crop"
+    if "base" in name:
+        return "base"
+    return None

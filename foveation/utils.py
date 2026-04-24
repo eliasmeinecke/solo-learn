@@ -1,41 +1,95 @@
 from pathlib import Path
 import json
-import random
+from PIL import Image
+from pycocotools import mask as mask_utils
 import torch
+import torchvision.models as models
 from torch.utils.data import Dataset
 from torchvision.datasets import ImageFolder
-from PIL import Image
-import cv2
-import numpy as np
-from pycocotools import mask as mask_utils
+from torchvision.transforms import InterpolationMode
+import torchvision.transforms.v2 as v2
+
+from solo.methods.base import BaseMethod
+
+from foveation.factory import setup_exact_foveation
+
+IMAGENET_VAL_PATH = "/home/data/elias/ImageNet/val"
+GAZE_JSON_PATH = "/home/data/elias/imagenet_sam_masks/imagenet_val_gaze_only.json"
+MASK_JSON_PATH = "/home/data/elias/imagenet_sam_masks/imagenet_val_masks_with_center.json"
+
+with open(Path("trained_models_config.json")) as f:
+    MODEL_CONFIGS = json.load(f)
+
+with open(Path("linear_models_config.json")) as f:
+    LINEAR_CONFIGS = json.load(f)
+    
+T_POST = v2.Compose([
+        v2.Resize(256),
+        #v2.Resize(256, interpolation=InterpolationMode.BICUBIC, antialias=True),
+        v2.CenterCrop(224),
+        v2.ToImage(),
+        v2.ToDtype(
+            torch.float32,
+            scale=True
+        ),
+        v2.Normalize(
+            mean=[0.485,0.456,0.406],
+            std=[0.229,0.224,0.225]
+        )
+    ])
+
+class IdentityFoveation(torch.nn.Module):
+    def forward(self, img, gaze):
+        return img
     
 
-class ImageNetSizeDataset(Dataset):
-    def __init__(self, root, gaze_json, transform=None):
+def get_gaze_by_filename_map():
+    with open(GAZE_JSON_PATH, "r") as f:
+            gaze_data = json.load(f)
+    gaze_by_filename = {v["filename"]: v for v in gaze_data.values()}
+    return gaze_by_filename
 
+
+def load_imagenet_class_map():
+    with open("imagenet_class_index.json") as f:
+        data = json.load(f)
+    # Format:
+    # {"0": ["n01440764", "tench"], ...}
+    mapping = {}
+    for idx, (synset, _) in data.items():
+        mapping[synset] = int(idx)
+    return mapping
+
+
+# SETUP MODEL + FOVEATION
+def build_model_and_foveation(model_name, device):
+    model = load_model(model_name).to(device)
+    model.eval()
+    if model_name in ["base", "dummy"]:
+        foveation = IdentityFoveation()
+    else:
+        foveation = setup_exact_foveation(model_name)
+    foveation = foveation.to(device)
+    return model, foveation
+
+
+class ImageNetGazeDataset(Dataset):
+    def __init__(self, root, transform=None):
         self.dataset = ImageFolder(root=root)
         self.transform = transform
-
-        with open(gaze_json, "r") as f:
-            gaze_data = json.load(f)
-
-        self.mask_by_filename = {v["filename"]: v for v in gaze_data.values()}
+        self.gaze_map = get_gaze_by_filename_map()
 
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-
         path, label = self.dataset.samples[idx]
         filename = Path(path).name
-
         img = Image.open(path).convert("RGB")
-
         if self.transform:
             img = self.transform(img)
-
         # --- gaze + area ---
-        dp = self.mask_by_filename.get(filename, None)
+        dp = self.gaze_map.get(filename, None)
         if dp is not None:
             gaze_rel = torch.tensor([
                     dp["centroid"]["x_rel"],
@@ -45,50 +99,26 @@ class ImageNetSizeDataset(Dataset):
         else:
             gaze_rel = torch.tensor([0.5, 0.5], dtype=torch.float32)
             area = torch.tensor(0.0, dtype=torch.float32)
-
         return img, label, gaze_rel, area
-    
-
-def fill_mask_holes_floodfill(mask):
-    # https://learnopencv.com/filling-holes-in-an-image-using-opencv-python-c/
-    mask_uint8 = (mask > 0).astype(np.uint8) * 255
-    mask_padded = cv2.copyMakeBorder(mask_uint8, 1,1,1,1, cv2.BORDER_CONSTANT, value=0)
-
-    h, w = mask_padded.shape
-    ff_mask = np.zeros((h+2, w+2), np.uint8)
-
-    cv2.floodFill(mask_padded, ff_mask, (0,0), 255)
-    mask_inv = cv2.bitwise_not(mask_padded)
-
-    mask_filled = mask_uint8 | mask_inv[1:-1, 1:-1]
-    return (mask_filled > 0).astype(np.uint8)
 
 
 class ImageNetMaskLoader:
-    def __init__(self, json_path, fill_holes=True):
-        with open(json_path, "r") as f:
+    def __init__(self):
+    
+        with open(MASK_JSON_PATH, "r") as f:
             data = json.load(f)
 
         self.masks_by_filename = {
             v["filename"]: v for v in data.values()
         }
 
-        self.fill_holes = fill_holes
-
     def get_mask(self, filename):
         entry = self.masks_by_filename.get(filename, None)
-
         if entry is None:
             return None
-
         # --- decode RLE ---
         mask = mask_utils.decode(entry["rle"])  # (H, W)
-
-        # --- optional cleanup ---
-        if self.fill_holes:
-            mask = fill_mask_holes_floodfill(mask)
-
-        return mask.astype(np.uint8)
+        return mask.astype(bool)
 
     def get_area(self, filename):
         entry = self.masks_by_filename.get(filename, None)
@@ -104,201 +134,139 @@ class ImageNetMaskLoader:
             entry["centroid"]["x_rel"],
             entry["centroid"]["y_rel"]
         )
+    
+    
+def find_model_config(model_name):
+    for m in MODEL_CONFIGS:
+        if m["name"].endswith(model_name):
+            return m
+    raise ValueError(f"Model not found: {model_name}")
 
 
-class CrowdingDataset(Dataset):
-    def __init__(
-        self,
-        root,
-        json_path,
-        transform=None,
-        condition="a",   # a, xa, ax, xax
-        canvas_size=540,
-        object_size=120,
-        background="gray"
-    ):
-        self.dataset = ImageFolder(root=root)
-        self.transform = transform
-        self.condition = condition
+def get_ckpt_path(model_cfg):
+    run_id = model_cfg["id"]
+    name = model_cfg["name"]
+    base = Path("/home/data/elias/archive_extracted/mocov3")
+    ckpt = base / run_id / f"{name}-{run_id}-ep=last.ckpt"
+    if not ckpt.exists():
+        raise FileNotFoundError(ckpt)
+    return ckpt
 
-        self.canvas_size = canvas_size
-        self.object_size = object_size
-        self.background = background
 
-        self.mask_loader = ImageNetMaskLoader(json_path=json_path, fill_holes=True)
+def load_mocov3_model(ckpt_path):
+    ckpt = torch.load(ckpt_path, map_location="cpu")
+    state = ckpt["state_dict"]
+    # EXACT SAME LOGIC as main_linear
+    for k in list(state.keys()):
+        if "encoder" in k:
+            state[k.replace("encoder", "backbone")] = state[k]
+        if "backbone" in k:
+            state[k.replace("backbone.", "")] = state[k]
+        del state[k]
+    backbone_model = BaseMethod._BACKBONES["resnet50"]
+    backbone = backbone_model(method="mocov3")
+    backbone.fc = torch.nn.Identity()
+    backbone.load_state_dict(state, strict=False)
+    return backbone
 
-        # --- group by class (for flanker sampling) ---
-        self.class_to_indices = {}
-        for i, (_, label) in enumerate(self.dataset.samples):
-            self.class_to_indices.setdefault(label, []).append(i)
 
-    def __len__(self):
-        return len(self.dataset)
+def find_linear_head(pretrained_id):
+    matches = [
+        x for x in LINEAR_CONFIGS
+        if x["pre_trained_id"] == pretrained_id
+    ]
+    if len(matches) == 0:
+        raise ValueError(f"No linear head for {pretrained_id}")
+    # gaze_imagenet > imagenet_42 (could be left out now but just to make sure)
+    preferred_order = ["gaze_imagenet", "imagenet_42"]
+    for dataset_name in preferred_order:
+        for m in matches:
+            if m["dataset"] == dataset_name:
+                return m
+    # fallback if new linear heads are added
+    print("[WARNING] No preferred dataset found, taking first available")
+    return matches[0]
 
-    # -----------------------
-    # helpers
-    # -----------------------
 
-    def extract_object(self, img, mask):
-        """Apply mask and crop object"""
-        mask = (mask > 0).astype(np.uint8)
+def get_linear_ckpt_path(linear_cfg):
+    linear_id = linear_cfg["id"]
+    base = Path("/home/data/elias/linear_extracted/linear")
+    run_dir = base / linear_id
+    if not run_dir.exists():
+        raise FileNotFoundError(f"Run dir not found: {run_dir}")
+    ckpts = list(run_dir.glob("*-ep=last.ckpt"))
+    if len(ckpts) == 0:
+        raise FileNotFoundError(f"No checkpoint found in {run_dir}")
+    if len(ckpts) > 1:
+        print(f"[WARNING] Multiple checkpoints found in {run_dir}, taking first")
+    ckpt_path = ckpts[0]
+    # get clean name for debug printing
+    # remove .ckpt
+    name = ckpt_path.stem  
+    # remove "-ep=last"
+    name = name.replace("-ep=last", "")
+    # remove "-<id>"
+    if name.endswith(f"-{linear_id}"):
+        name = name[: -(len(linear_id) + 1)]
+    return ckpt_path, name
 
-        ys, xs = np.where(mask)
-        if len(xs) == 0:
-            return None
 
-        x0, x1 = xs.min(), xs.max()
-        y0, y1 = ys.min(), ys.max()
+def find_key(state_dict, target):
+    for k in state_dict.keys():
+        if k.endswith(target):
+            return k
+    raise KeyError(target)
 
-        obj = img[y0:y1+1, x0:x1+1]
-        mask = mask[y0:y1+1, x0:x1+1]
 
-        return obj, mask
+def load_linear_head(ckpt_path, pretrained_id):
+    ckpt = torch.load(ckpt_path, map_location="cpu")
+    state_dict = ckpt["state_dict"]
+    # all classifiers peak for same learning rate
+    weight_suffix = "classifier-lr_2:00000000.linear.weight"
+    bias_suffix = "classifier-lr_2:00000000.linear.bias"
+    weight_key = find_key(state_dict, weight_suffix)
+    bias_key   = find_key(state_dict, bias_suffix)
+    linear = torch.nn.Linear(2048, 1000)
+    linear.weight.data = state_dict[weight_key]
+    linear.bias.data   = state_dict[bias_key]
+    return linear
 
-    def resize_object(self, obj, mask):
-        h, w = obj.shape[:2]
 
-        scale = self.object_size / max(h, w)
+class FullModel(torch.nn.Module):
+    def __init__(self, backbone, head):
+        super().__init__()
+        self.backbone = backbone
+        self.head = head
+    def forward(self, x):
+        feats = self.backbone(x)
+        # resnet might give [B,2048,1,1]
+        if feats.ndim == 4:
+            feats = feats.flatten(1)
+        return self.head(feats)
+    
 
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-
-        obj_pil = Image.fromarray(obj)
-        mask_pil = Image.fromarray(mask * 255)
-
-        obj_pil = obj_pil.resize((new_w, new_h), Image.BILINEAR)
-        mask_pil = mask_pil.resize((new_w, new_h), Image.NEAREST)
-
-        return np.array(obj_pil), (np.array(mask_pil) > 0)
-
-    def create_background(self):
-        H = W = self.canvas_size
-
-        if self.background == "gray":
-            return np.ones((H, W, 3), dtype=np.uint8) * 127
-        elif self.background == "black":
-            return np.zeros((H, W, 3), dtype=np.uint8)
-        else:
-            imagenet_mean = np.array([0.485, 0.456, 0.406]) * 255
-            background = np.ones((H, W, 3), dtype=np.uint8)
-            for c in range(3):
-                background[..., c] *= imagenet_mean[c]
-            return background
-
-    def paste(self, canvas, obj, mask, cx, cy):
-        H, W = canvas.shape[:2]
-        h, w = obj.shape[:2]
-
-        x0 = int(cx - w // 2)
-        y0 = int(cy - h // 2)
-
-        x1 = x0 + w
-        y1 = y0 + h
-
-        if x0 < 0 or y0 < 0 or x1 > W or y1 > H:
-            print("Skipped paste (out of bounds)")
-            return canvas  # skip if out of bounds
-
-        region = canvas[y0:y1, x0:x1]
-        region[mask] = obj[mask]
-        canvas[y0:y1, x0:x1] = region
-
-        return canvas
-
-    def sample_flanker(self, target_label):
-        while True:
-            idx = random.randint(0, len(self.dataset) - 1)
-            _, label = self.dataset.samples[idx]
-            if label != target_label:
-                return idx
-
-    # -----------------------
-    # main
-    # -----------------------
-
-    def __getitem__(self, idx):
-
-        path, label = self.dataset.samples[idx]
-        filename = Path(path).name
-
-        img = np.array(Image.open(path).convert("RGB"))
-
-        mask = self.mask_loader.get_mask(filename)
-        # important fix: resize mask to image size
-        H_img, W_img = img.shape[:2]
-        H_mask, W_mask = mask.shape
-
-        if (H_mask != H_img) or (W_mask != W_img):
-            mask = cv2.resize(
-                mask.astype(np.uint8),
-                (W_img, H_img),
-                interpolation=cv2.INTER_NEAREST
-            )
-
-        obj = self.extract_object(img, mask)
-        if obj is None:
-            return self.__getitem__((idx + 1) % len(self))
-
-        obj, mask = obj
-        obj, mask = self.resize_object(obj, mask)
-
-        # --- canvas ---
-        canvas = self.create_background()
-
-        H = W = self.canvas_size
-        cx_target = int(W * 0.6)
-        cy_target = int(H * 0.5)
-
-        # --- paste target ---
-        canvas = self.paste(canvas, obj, mask, cx_target, cy_target)
-
-        # --- flankers ---
-        if self.condition in ["xa", "xax"]:
-            idx_f = self.sample_flanker(label)
-            obj_f, mask_f = self._load_object(idx_f)
-
-            cx_center = int(W * 0.35)
-            canvas = self.paste(canvas, obj_f, mask_f, cx_center, cy_target)
-
-        if self.condition in ["ax", "xax"]:
-            idx_f = self.sample_flanker(label)
-            obj_f, mask_f = self._load_object(idx_f)
-
-            cx_periph = int(W * 0.85)
-            canvas = self.paste(canvas, obj_f, mask_f, cx_periph, cy_target)
-
-        # --- to PIL ---
-        img_out = Image.fromarray(canvas)
-
-        if self.transform:
-            img_out = self.transform(img_out)
-
-        # --- gaze (TARGET!) ---
-        gaze = torch.tensor([
-            cx_target / W,
-            cy_target / H
-        ], dtype=torch.float32)
-
-        return img_out, label, gaze
-
-    # helper for flankers
-    def _load_object(self, idx):
-        path, label = self.dataset.samples[idx]
-        filename = Path(path).name
-
-        img = np.array(Image.open(path).convert("RGB"))
-        mask = self.mask_loader.get_mask(filename)
-        # important fix: resize mask to image size
-        H_img, W_img = img.shape[:2]
-        H_mask, W_mask = mask.shape
-
-        if (H_mask != H_img) or (W_mask != W_img):
-            mask = cv2.resize(
-                mask.astype(np.uint8),
-                (W_img, H_img),
-                interpolation=cv2.INTER_NEAREST
-            )
-
-        obj = self.extract_object(img, mask)
-        obj, mask = obj
-        return self.resize_object(obj, mask)
+def load_model(model_name):
+    # dummy-model
+    if model_name == "dummy":
+        return models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
+    # find backbone config
+    model_cfg = None
+    for m in MODEL_CONFIGS:
+        if model_name in m["name"]:
+            model_cfg = m
+            break
+    if model_cfg is None:
+        raise ValueError(f"Model not found: {model_name}")
+    # backbone
+    ckpt_path = get_ckpt_path(model_cfg)
+    backbone = load_mocov3_model(ckpt_path)
+    backbone.eval()
+    # linear head
+    linear_cfg = find_linear_head(model_cfg["id"])
+    linear_ckpt, linear_name = get_linear_ckpt_path(linear_cfg)
+    head = load_linear_head(linear_ckpt, model_cfg["id"])
+    print(f"[Model] Backbone: {model_cfg['name']}")
+    print(f"[Model] Linear head: {linear_name}")
+    model = FullModel(backbone, head)
+    model.eval()
+    return model

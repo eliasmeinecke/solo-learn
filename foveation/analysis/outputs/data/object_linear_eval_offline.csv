@@ -1,0 +1,9 @@
+model,gaze_mode,accuracy
+base,object,0.40022
+crop,object,0.41418
+blur-light,object,0.41244
+blur-nosal,object,0.40342
+blur-strong,object,0.392
+cm-light,object,0.412
+cm-nosal,object,0.42212
+cm-strong,object,0.42348

@@ -6,17 +6,17 @@ import random
 import h5py
 import cv2
 import json
+from pathlib import Path
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from PIL import Image
+from pycocotools import mask as mask_util
 
-from pathlib import Path
 import torch
+from torchvision.transforms import PILToTensor
+import torchvision.transforms.v2 as v2
 import torchvision.transforms.functional as TF
 from torchvision.transforms.functional import pil_to_tensor
-import torchvision.transforms.v2 as v2
-from torchvision.transforms import PILToTensor
-from pycocotools import mask as mask_util
 from torchvision.datasets import ImageFolder
 
 from foveation.factory import setup_exact_foveation
@@ -26,7 +26,8 @@ from foveation.methods.cm import CorticalMagnification
 
 from foveation.ooc.ooc_data import OOCOriginalDataset, OOCInpaintedDataset, OOCObjectOnlyDataset, OOCShuffledDataset
 from foveation.ooc.full_imagenet_ooc import ImageNetValOOC
-from foveation.crowding import CrowdingDatasetNotMNIST
+from foveation.crowding.crowding_helper import CrowdingDataset
+from foveation.utils import IMAGENET_VAL_PATH, MASK_JSON_PATH
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -52,14 +53,18 @@ def main():
             "annot": annot
         })
     
+    #viz_ego4d_example(frame, annot, saliency)
     #viz_fov(samples, method="crop")
     #viz_fov(samples, method="blur")
     #viz_fov(samples, method="cm")
+    viz_blur_heatmaps(samples)
+    #viz_imagenet_fov_samples(3, remove_padding_bool=True) # might not work anymore?
     #viz_imagenet_mask_samples(4)
     #viz_ooc_datasets(foveation="blur-light")
     #viz_full_imagenet_ooc(idx=200)
-    #viz_crowding_dataset(condition="xax", foveation="blur-light")
-    # viz_imagenet_fov_samples(3, remove_padding_bool=True)
+    #viz_crowding_dataset(condition="ax", foveation="cm-strong")
+    #viz_crowding_dataset(condition="xax", foveation="blur-strong")
+    
 
 
 def viz_fov(samples, method="cm"):
@@ -159,7 +164,7 @@ def viz_fov(samples, method="cm"):
     plt.close()
 
     print(f"Saved {file_name}")
-    
+
 
 def viz_ego4d_example(frame, annot, saliency):
     flat_max = saliency.argmax()
@@ -180,36 +185,120 @@ def viz_ego4d_example(frame, annot, saliency):
     plt.savefig(out_path, dpi=200)
     plt.close()
     print("Saved ego4d_example.png")  
+
+
+def viz_blur_heatmaps(samples):
+    radii_frac = [0.3, 0.7]
+    sigma_base_frac = 0.006
+    sigma_growth = 2
+    transition_frac = 0.1
     
+    sample = samples[0]
+    img = sample["frame"]
+    img_tensor = sample["img_tensor"].to(device)
+    gaze_tensor = sample["gaze_tensor"].to(device)
     
-def preprocess_like_dataset(img):
+    _, _, H, W = img_tensor.shape
 
-    W, H = img.size
-    max_side = max(W, H)
+    x_g = gaze_tensor[:, 0]
+    y_g = gaze_tensor[:, 1]
+    
+    # --- coordinate grid ---
+    ys = torch.arange(H, device=img_tensor.device)
+    xs = torch.arange(W, device=img_tensor.device)
+    Y, X = torch.meshgrid(ys, xs, indexing="ij")
 
-    w_ratio = W / max_side
-    h_ratio = H / max_side
+    x_g = x_g.view(-1, 1, 1)
+    y_g = y_g.view(-1, 1, 1)
+    R = torch.sqrt((X - x_g)**2 + (Y - y_g)**2)
+    R_max = R.amax(dim=(1, 2), keepdim=True)
+    # radii & sigmas
+    radii = [f * R_max for f in radii_frac]
+    transition_width = transition_frac * R_max
 
-    # pad bottom/right
-    pad_right = max_side - W
-    pad_bottom = max_side - H
+    sigma_base = sigma_base_frac * min(H, W)
 
-    img = TF.pad(img, (0,0,pad_right,pad_bottom), fill=0)
+    sigmas = [0.0]
+    for i in range(len(radii_frac)):
+        sigmas.append(sigma_base * (sigma_growth ** i))
 
-    # resize
-    img = TF.resize(img, (540,540))
+    # blurred versions
+    blurred_imgs = []
+    for sigma in sigmas:
+        if sigma == 0:
+            blurred_imgs.append(img_tensor)
+        else:
+            # kernel size automatically derived (maybe change logic?)
+            k = int(2 * round(3 * sigma) + 1)
+            blurred = TF.gaussian_blur(img_tensor, kernel_size=k, sigma=sigma)
+            blurred_imgs.append(blurred)
+                
+    # ring centers
+    ring_centers = []
+    prev = torch.zeros_like(R_max)
 
-    return img, w_ratio, h_ratio
+    for r in radii:
+        ring_centers.append(0.5 * (prev + r))
+        prev = r
 
+    ring_centers.append(prev + transition_width)
 
-def remove_padding(img_tensor, ratio):
+    # soft weights
+    weights = []
+    for c in ring_centers:
+        w = torch.exp(-0.5 * ((R - c) / transition_width) ** 2)
+        weights.append(w)
 
-    B, C, H, W = img_tensor.shape
+    weights = torch.stack(weights, dim=0)
+    weights = weights / (weights.sum(dim=0, keepdim=True) + 1e-6)
+    
+    # weighted blending
+    output = torch.zeros_like(img_tensor)
 
-    valid_W = int(ratio[0] * W)
-    valid_H = int(ratio[1] * H)
+    for w, img_blur in zip(weights, blurred_imgs):
+        output += w.unsqueeze(1) * img_blur
 
-    return img_tensor[:, :, :valid_H, :valid_W]
+    output = output.clamp(0, 255).to(torch.uint8)
+    output = output.squeeze(0).permute(1, 2, 0).cpu().numpy()
+
+    # --- plotting ---
+    fig, axes = plt.subplots(2, 3, figsize=(18, 9))
+
+    # --- Row 1: Inputs & geometry ---
+    axes[0, 0].imshow(img)
+    axes[0, 0].scatter(x_g.item(), y_g.item(), c="red", s=20)
+    axes[0, 0].set_title("Input Frame + Gaze")
+
+    axes[0, 1].imshow(output)
+    axes[0, 1].scatter(x_g.item(), y_g.item(), c="red", s=20)
+    axes[0, 1].set_title("Blurred Image + Gaze")
+    
+    axes[0, 2].imshow(np.log(R[0].cpu().numpy() + 1), cmap="inferno")
+    axes[0, 2].set_title("Distance R (log)")
+
+    axes[1, 0].imshow(weights[0][0].cpu().numpy(), cmap="viridis")
+    axes[1, 0].set_title("Weight: Sharp (σ=0)")
+
+    mid = len(weights) // 2
+    axes[1, 1].imshow(weights[mid][0].cpu().numpy(), cmap="viridis")
+    axes[1, 1].set_title(f"Weight: Mid (σ={sigmas[mid]})")
+
+    axes[1, 2].imshow(weights[-1][0].cpu().numpy(), cmap="viridis")
+    axes[1, 2].set_title(f"Weight: Strong (σ={sigmas[-1]})")
+
+    for ax in axes.flat:
+        ax.axis("off")
+
+    plt.tight_layout()
+
+    # --- save ---
+    file_name = "ego4d_blur_heatmaps_example.png"
+    out_path = Path(__file__).resolve().parent / "plots" / "blur_heatmaps" / file_name
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=200)
+    plt.close()
+
+    print(f"Saved {file_name}")   
 
     
 def viz_imagenet_fov_samples(n, remove_padding_bool):
@@ -245,26 +334,14 @@ def viz_imagenet_fov_samples(n, remove_padding_bool):
 
         img = val_ds[i][0]
         dp = json_by_filename[filename]
-        
-        W_img_original, H_img_original = img.size
-        
-        img_proc, w_ratio, h_ratio = preprocess_like_dataset(img)
-        img_tensor = pil_to_tensor(img_proc).unsqueeze(0)            
-
-        ratio = torch.tensor([w_ratio, h_ratio])
-        
-    
-        # OPTIONAL padding removal
-        if remove_padding_bool:
-            img_tensor = remove_padding(img_tensor, ratio)
-
+        img_tensor = pil_to_tensor(img).unsqueeze(0)            
         _, _, H_img, W_img = img_tensor.shape            
 
         cx_rel = dp["centroid"]["x_rel"]
         cy_rel = dp["centroid"]["y_rel"]
 
-        cx_abs_original = cx_rel * W_img_original
-        cy_abs_original = cy_rel * H_img_original
+        cx_abs_original = cx_rel * W_img
+        cy_abs_original = cy_rel * H_img
         
         cx_abs = cx_rel * W_img
         cy_abs = cy_rel * H_img
@@ -319,12 +396,9 @@ def viz_imagenet_fov_samples(n, remove_padding_bool):
     
 def viz_imagenet_mask_samples(n):
     
-    val_ds = ImageFolder("/home/data/ILSVRC_real/val", transform=None)
-
-    # should't work with this anymore!
-    json_path = "/home/data/elias/imagenet_sam_masks/imagenet_val_gaze_only.json"
+    val_ds = ImageFolder(IMAGENET_VAL_PATH, transform=None)
         
-    with open(json_path, "r") as f:
+    with open(MASK_JSON_PATH, "r") as f:
         json_data = json.load(f)
         
     json_by_filename = {
@@ -418,7 +492,7 @@ def viz_imagenet_mask_samples(n):
         plt.savefig(out_path, dpi=200)
         plt.close()
         print(f"Saved {save_name}")
-
+        
 
 def viz_ooc_datasets(n_samples=3, foveation=None):
 
@@ -532,11 +606,7 @@ def viz_full_imagenet_ooc(idx=100):
     
 def viz_crowding_dataset(condition, foveation=None, n=3):
     
-    imagenet_val_path = "/home/data/ILSVRC_real/val"
-    json_path = "/home/data/elias/imagenet_sam_masks/imagenet_val_masks_with_center.json"
-    notmnist_path = "/home/data/elias/notMNIST_small"
-    
-    dataset = CrowdingDatasetNotMNIST(imagenet_val_path, json_path, notmnist_path, transform=PILToTensor(), condition=condition)
+    dataset = CrowdingDataset(transform=PILToTensor(), condition=condition)
     indices = random.sample(range(len(dataset)), n)
     
     if foveation:
@@ -623,7 +693,7 @@ def prepare_tensors(frame, annot, saliency):
         .permute(2,0,1)
         .unsqueeze(0)
         .to(device)
-        .to(torch.uint8)
+        .to(torch.float32)
     )
 
     gaze_tensor = torch.tensor(
