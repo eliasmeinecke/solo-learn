@@ -2,20 +2,22 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 import pandas as pd
-import numpy as np
-from scipy.stats import kurtosis
+from scipy.stats import spearmanr
 
+from foveation.utils import load_imagenet_class_map
 from .utils import (
     load_analysis_data, 
     set_thesis_style, 
     parse_model,
     get_group,
     get_foveation_palette,
+    format_label,
     FOVEATION_ORDER,
     EXACT_FOVEATION_ORDER,
     FOVEATION_PALETTE,
     OOC_DATASET_ORDER,
 )
+
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "outputs"
 FIG_DIR = OUTPUT_DIR / "figures"
@@ -141,6 +143,55 @@ def plot_linear_eval_foveated():
     print(f"Saved figure → {out_path}")
     
     
+def plot_linear_eval_foveated_offline():
+    
+    set_thesis_style()
+    # --- load ---
+    df = load_analysis_data("object_linear_eval_offline")
+    df["model"] = df["model"].str.replace("-nosal", "-medium", regex=False)
+    df["accuracy"] = df["accuracy"] * 100
+    # --- baseline ---
+    baseline = df[df["model"] == "base"]["accuracy"].iloc[0]
+    # --- delta ---
+    df["delta"] = df["accuracy"] - baseline
+    # remove baseline
+    df = df[df["model"] != "base"].copy()
+    # --- ordering ---
+    order = [f for f in EXACT_FOVEATION_ORDER if f != "base"]
+    df["model"] = pd.Categorical(df["model"], categories=order, ordered=True)
+    df = df.sort_values("model")
+    palette = get_foveation_palette()
+    # --- plot ---
+    plt.figure(figsize=(9, 4))
+    sns.barplot(
+        data=df,
+        x="model",
+        y="delta",
+        hue="model",
+        dodge=False,
+        palette=palette,
+    )
+    plt.ylim(top=df["delta"].max() + 0.5)
+    plt.ylabel("Δ Top-1 Accuracy vs Baseline (%)")
+    plt.xlabel("Foveation Type")
+    plt.title(f"Foveated ImageNet Improvement (Baseline = {baseline:.2f}%)")
+    # --- annotations ---
+    for i, (_, row) in enumerate(df.iterrows()):
+        if row["delta"] > 0:
+            plt.text(i, row["delta"] + 0.1, f"{row['delta']:+.2f}", ha="center", fontsize=9)
+        else:
+            plt.text(i, row["delta"] + 0.92, f"{row['delta']:+.2f}", ha="center", fontsize=9)
+    plt.xticks(rotation=0)
+    plt.axhline(0, linestyle=":", color="gray", linewidth=1, alpha=0.8)
+    # --- remove legend ---
+    plt.legend().remove()
+    plt.tight_layout()
+    out_path = FIG_DIR / "gaze_linear_eval" / "object_linear_eval_delta_offline.pdf"
+    plt.savefig(out_path, bbox_inches="tight")
+    plt.close()
+    print(f"Saved figure → {out_path}")
+    
+    
 def plot_delta_to_central_gaze():
     
     set_thesis_style()
@@ -208,6 +259,59 @@ def plot_delta_to_central_gaze():
     plt.savefig(out_path, bbox_inches="tight")
     plt.close()
 
+    print(f"Saved figure → {out_path}")
+    
+    
+def plot_delta_to_central_gaze_offline():
+
+    set_thesis_style()
+    # --- load ---
+    df_obj = load_analysis_data("object_linear_eval_offline")
+    df_obj["model"] = df_obj["model"].str.replace("-nosal", "-medium", regex=False)
+    df_cen = load_analysis_data("central_linear_eval_offline")
+    df_cen["model"] = df_cen["model"].str.replace("-nosal", "-medium", regex=False)
+    # --- to percent ---
+    df_obj["accuracy"] *= 100
+    df_cen["accuracy"] *= 100
+    # --- merge ---
+    df = pd.merge(
+        df_obj[["model", "accuracy"]],
+        df_cen[["model", "accuracy"]],
+        on="model",
+        suffixes=("_object", "_central")
+    )
+    # --- delta ---
+    df["delta"] = df["accuracy_object"] - df["accuracy_central"]
+    # remove baseline
+    df = df[df["model"] != "base"].copy()
+    # --- ordering ---
+    order = [f for f in EXACT_FOVEATION_ORDER if f != "base"]
+    df["model"] = pd.Categorical(df["model"], categories=order, ordered=True)
+    df = df.sort_values("model")
+    # --- plot ---
+    palette = get_foveation_palette()
+    plt.figure(figsize=(8, 4))
+    sns.barplot(
+        data=df,
+        x="model",
+        y="delta",
+        palette=palette
+    )
+    plt.ylabel("Δ Accuracy (Object – Central Gaze) (%)")
+    plt.xlabel("Foveation Type")
+    plt.title("Object vs Central Gaze Performance")
+    # --- annotations ---
+    for i, (_, row) in enumerate(df.iterrows()):
+        plt.text(i, row["delta"] + 0.15, f"{row['delta']:+.2f}", ha="center", fontsize=9)
+    plt.xticks(rotation=0)
+    # --- limits ---
+    ymin = min(0, df["delta"].min() - 0.5)
+    ymax = df["delta"].max() + 0.5
+    plt.ylim(ymin, ymax)
+    plt.tight_layout()
+    out_path = FIG_DIR / "gaze_linear_eval" / "central_gaze_delta_offline.pdf"
+    plt.savefig(out_path, bbox_inches="tight")
+    plt.close()
     print(f"Saved figure → {out_path}")
     
     
@@ -355,7 +459,7 @@ def plot_inpainted_trend():
 
     plt.xlabel("Foveation Strength")
     plt.ylabel("Accuracy (%)")
-    plt.title("Performance on Background-Only (Inpainted) Images")
+    plt.title("Performance on Background-Only Images")
 
     plt.legend(frameon=True)
     plt.tight_layout()
@@ -365,6 +469,124 @@ def plot_inpainted_trend():
     plt.close()
 
     print(f"Saved → {out_path}")
+    
+
+def build_master_csv():
+    inpainted_path = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/ooc_per_sample/base/base_inpainted.csv")
+    meta_path = Path("/home/data/elias/ImageNet-OOC1k_flattened/metadata.csv")
+    out_path  = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/inpainted_analysis/master.csv")
+    # --- load ---
+    df_base = pd.read_csv(inpainted_path)
+    df_meta = pd.read_csv(meta_path)
+    # sanity check
+    assert len(df_meta) > df_base["idx"].max(), "Metadata shorter than idx range!"
+    # --- align metadata via idx ---
+    # take only rows that correspond to predictions
+    df_meta_subset = df_meta.iloc[df_base["idx"]].reset_index(drop=True)
+    # --- merge (column-wise, safe because of alignment) ---
+    df_master = pd.concat([df_base.reset_index(drop=True), df_meta_subset], axis=1)
+    # optional: drop redundant columns
+    # (class_index ist oft gleich label → kannst du behalten oder entfernen)
+    # df_master = df_master.drop(columns=["class_index"])
+    # --- save ---
+    df_master.to_csv(out_path, index=False)
+    print(f"Saved → {out_path}")
+    # quick sanity print
+    print(df_master.head())
+    
+    
+def compute_background_stats(min_samples=15):
+
+    master_path  = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/inpainted_analysis/master.csv")
+    out_path_cat  = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/inpainted_analysis/background_category_stats.csv")
+    out_path_sub  = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/inpainted_analysis/background_subcategory_stats.csv")
+    
+    df = pd.read_csv(master_path)
+    # 1. BACKGROUND CATEGORY
+    df_cat = (
+        df.groupby("background_category")
+        .agg(
+            accuracy=("correct", "mean"),
+            n_samples=("correct", "count"),
+            mean_conf=("conf_top1", "mean"),
+        )
+        .reset_index()
+    )
+    # sort (optional, nicer)
+    order = ["nature", "human_related", "misc"]
+    df_cat["background_category"] = pd.Categorical(
+        df_cat["background_category"], categories=order, ordered=True
+    )
+    df_cat = df_cat.sort_values("background_category")
+    df_cat.to_csv(out_path_cat, index=False)
+    print(f"Saved → {out_path_cat}")
+    # 2. BACKGROUND SUBCATEGORY
+    # remove missing / misc (no subcategories there)
+    df_sub = df.dropna(subset=["background_subcategory"]).copy()
+    df_sub = (
+        df_sub.groupby(["background_category", "background_subcategory"])
+        .agg(
+            accuracy=("correct", "mean"),
+            n_samples=("correct", "count"),
+            mean_conf=("conf_top1", "mean"),
+        )
+        .reset_index()
+    )
+    # filter small groups (important!)
+    df_sub = df_sub[df_sub["n_samples"] >= min_samples]
+    # sort by accuracy (nice for inspection)
+    df_sub = df_sub.sort_values("accuracy", ascending=False)
+    df_sub.to_csv(out_path_sub, index=False)
+    print(f"Saved → {out_path_sub}")
+    
+    
+def compute_top_predictions(top_k=5, min_samples=15):
+    
+    master_path  = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/inpainted_analysis/master.csv")
+    out_path_cat  = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/inpainted_analysis/top5_predictions_per_category.csv")
+    out_path_sub  = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/inpainted_analysis/top5_predictions_per_subcategory.csv")
+    idx_class_map = load_imagenet_class_map() 
+    df = pd.read_csv(master_path)
+    df["pred_name"] = df["pred"].map(idx_class_map)
+    # -----------------------------------
+    # 1. TOP PREDICTIONS PER CATEGORY
+    # -----------------------------------
+    cat_results = []
+    for cat, group in df.groupby("background_category"):
+        counts = group["pred_name"].value_counts()
+        top = counts.head(top_k)
+        for rank, (cls, cnt) in enumerate(top.items(), start=1):
+            cat_results.append({
+                "background_category": cat,
+                "pred_class": cls,
+                "count": cnt,
+                "rank": rank
+            })
+    df_cat = pd.DataFrame(cat_results)
+    df_cat.to_csv(out_path_cat, index=False)
+    print(f"Saved → {out_path_cat}")
+    # -----------------------------------
+    # 2. TOP PREDICTIONS PER SUBCATEGORY
+    # -----------------------------------
+    sub_results = []
+    # remove missing subcategories
+    df_sub = df.dropna(subset=["background_subcategory"]).copy()
+    for (cat, sub), group in df_sub.groupby(["background_category", "background_subcategory"]):
+        if len(group) < min_samples:
+            continue
+        counts = group["pred_name"].value_counts()
+        top = counts.head(top_k)
+        for rank, (cls, cnt) in enumerate(top.items(), start=1):
+            sub_results.append({
+                "background_category": cat,
+                "background_subcategory": sub,
+                "pred_class": cls,
+                "count": cnt,
+                "rank": rank
+            })
+    df_sub_out = pd.DataFrame(sub_results)
+    df_sub_out.to_csv(out_path_sub, index=False)
+    print(f"Saved → {out_path_sub}")
     
 
 def plot_color_std_object_only():
@@ -859,7 +1081,7 @@ def plot_ooc_confidence_gaps(gap_mode=1):
     print(f"Saved → {out_path}")
     
 
-def plot_confidence_dynamics():
+def plot_ooc_confidence_dynamics():
 
     set_thesis_style()
     
@@ -1044,6 +1266,32 @@ def plot_small_objects_accuracy():
 
     print(f"Saved → {out_path}")
     
+
+def compute_size_correlations():
+    base_path = Path("/home/elias/solo-learn/foveation/analysis/outputs/data/size_analysis")
+    model_csvs = ["base.csv", "crop.csv", "blur-light.csv", "blur-nosal.csv", "blur-strong.csv", "cm-light.csv", "cm-nosal.csv", "cm-strong.csv"]
+    results = []
+    for m in model_csvs:
+        df = pd.read_csv(base_path / m)
+        # --- core variables ---
+        mask_area = df["mask_area"]
+        correct = df["correct"]
+        # --- spearman ---
+        rho, p = spearmanr(mask_area, correct)
+        results.append({
+            "model": df["model"].iloc[0],
+            "spearman_rho": rho,
+            "p_value": p,
+            "n_samples": len(df),
+            "rho_squared": rho ** 2
+        })
+        print(f"{df['model'].iloc[0]} → rho={rho:.4f}")
+
+    # --- save ---
+    out_path = base_path / "size_correlations.csv"
+    pd.DataFrame(results).to_csv(out_path, index=False)
+    print(f"\nSaved → {out_path}")
+    
     
 def plot_accuracy_vs_size():
     
@@ -1222,12 +1470,12 @@ def plot_accuracy_vs_size_by_strength(method="blur"):
     print(f"Saved → {out_path}")
     
 
-def plot_crowding_trend(condition="ax", normalize=True):
+def plot_crowding_distance_trend(condition="ax", normalize=True):
     
     set_thesis_style()
 
     df = load_analysis_data("crowding_results")
-    df["foveation"] = df["foveation"].str.replace("-nosal", "", regex=False)
+    df["foveation"] = df["foveation"].str.replace("-nosal", "-medium", regex=False)
     # --- select relevant columns ---
     acc_col = f"{condition}_acc"
     # --- optional normalization ---
@@ -1262,24 +1510,71 @@ def plot_crowding_trend(condition="ax", normalize=True):
     plt.close()
     print(f"Saved → {out_path}")
     
-    
-def plot_crowding_condition_trend(distance=20):
+
+def plot_crowding_absolute_a(distance=20):
 
     set_thesis_style()
     df = load_analysis_data("crowding_results")
-    df["foveation"] = df["foveation"].str.replace("-nosal", "", regex=False)
+    df["foveation"] = df["foveation"].str.replace("-nosal", "-medium", regex=False)
+    # --- filter ---
+    df = df[df["distance"] == distance].copy()
+    # --- to percent ---
+    df["a_acc"] = df["a_acc"] * 100
+    # --- ordering ---
+    order = [f for f in EXACT_FOVEATION_ORDER]
+    df["foveation"] = pd.Categorical(df["foveation"], categories=order, ordered=True)
+    df = df.sort_values("foveation")
+    df["foveation_label"] = df["foveation"].apply(format_label)
+    # palette
+    palette = get_foveation_palette()
+    # --- plot ---
+    plt.figure(figsize=(6, 4))
+    sns.barplot(
+        data=df,
+        x="foveation_label",
+        y="a_acc",
+        hue="foveation",
+        palette=palette
+    )
+    plt.xlabel("Foveation Type")
+    plt.ylabel("Accuracy (%)")
+    plt.title("Absolute Performance (Condition = a)")
+    plt.legend().remove()
+    # --- annotations ---
+    for i, (_, row) in enumerate(df.iterrows()):
+        plt.text(i, row["a_acc"] + 0.8, f"{row['a_acc']:.1f}", ha="center", fontsize=9)
+    plt.xticks(rotation=0)
+    # nicer limits
+    plt.ylim(0, df["a_acc"].max() + 5)
+    plt.tight_layout()
+    out_path = FIG_DIR / "crowding" / f"absolute_a_d{distance}.pdf"
+    plt.savefig(out_path)
+    plt.close()
+    print(f"Saved → {out_path}")
+
+
+def plot_crowding_condition_trend_normalized(distance=20):
+    set_thesis_style()
+    df = load_analysis_data("crowding_results")
+    df["foveation"] = df["foveation"].str.replace("-nosal", "-medium", regex=False)
     # --- filter distance ---
     df = df[df["distance"] == distance].copy()
-    
-    # --- reshape to long format ---
+    # --- keep only selected models ---
+    keep = ["base", "crop", "blur-light", "cm-light"]
+    df = df[df["foveation"].isin(keep)].copy()
+    # --- compute normalized accuracies ---
+    df["a_norm"] = 1.0
+    df["ax_norm"] = df["ax_acc"] / df["a_acc"]
+    df["xax_norm"] = df["xax_acc"] / df["a_acc"]
+    # --- reshape ---
     df_long = df.melt(
         id_vars=["foveation"],
-        value_vars=["a_acc", "ax_acc", "xax_acc"],
+        value_vars=["a_norm", "ax_norm", "xax_norm"],
         var_name="condition",
         value_name="accuracy"
     )
-    # clean condition names
-    df_long["condition"] = df_long["condition"].str.replace("_acc", "")
+    # clean names
+    df_long["condition"] = df_long["condition"].str.replace("_norm", "")
     # enforce order
     condition_order = ["a", "ax", "xax"]
     df_long["condition"] = pd.Categorical(
@@ -1300,11 +1595,13 @@ def plot_crowding_condition_trend(distance=20):
         marker="o"
     )
     plt.xlabel("Condition")
-    plt.ylabel("Accuracy")
-    plt.title(f"Accuracy Trend at Distance = {distance}")
+    plt.ylabel("Relative Accuracy (normalized to 'a')")
+    plt.title(f"Crowding Effect at Distance = {distance}")
+    # force nice limits
+    plt.ylim(0.6, 1.05)
     plt.legend(title="Foveation", frameon=False)
     plt.tight_layout()
-    out_path = FIG_DIR / "crowding" / f"condition_trend_d{distance}.pdf"
+    out_path = FIG_DIR / "crowding" / f"condition_trend_norm_d{distance}.pdf"
     plt.savefig(out_path)
     plt.close()
     print(f"Saved → {out_path}")
@@ -1316,7 +1613,7 @@ def plot_crowding_vs_strength(distance=20, mode="a_xax"):
     """
     set_thesis_style()
     df = load_analysis_data("crowding_results")
-    df["foveation"] = df["foveation"].str.replace("-nosal", "", regex=False)
+    df["foveation"] = df["foveation"].str.replace("-nosal", "-medium", regex=False)
     df = df[df["distance"] == distance].copy()
     # --- normalize ---
     df["ax_rel"] = df["ax_acc"] / df["a_acc"]
@@ -1375,21 +1672,36 @@ if __name__ == "__main__":
     #plot_lr_sweep_knn_mean()
     #plot_linear_eval_foveated()
     #plot_delta_to_central_gaze()
+    #plot_linear_eval_foveated_offline()
+    #plot_delta_to_central_gaze_offline()
+    
+    #plot_inpainted_trend()
+    #build_master_csv()
+    #compute_background_stats()
+    #compute_top_predictions()
     
     #plot_ooc_delta_heatmap()
-    #plot_inpainted_trend()
     #plot_color_std_object_only()
     #plot_object_or_ooc_trend("Object-Only") # Object-Only or OOC    
-    #plot_gap("obj", "ooc") # "ori", "inp", "obj", "ooc"
+    #plot_object_or_ooc_trend("OOC")
+    #plot_gap("ori", "ooc") # "ori", "obj", "ooc"
+    #plot_gap("ori", "obj")
+    #plot_gap("obj", "ooc")
     #export_ooc_background_summary()
     #plot_model_ooc_confidence()
     #plot_ooc_confidence_gaps(1) # 1,2,3
-    #plot_confidence_dynamics()
+    #plot_ooc_confidence_dynamics()
+    
     #plot_small_objects_accuracy()
+    #compute_size_correlations()
     #plot_accuracy_vs_size()
     #plot_accuracy_vs_size_by_strength(method="blur") # blur or cm
     #plot_accuracy_vs_size_by_strength(method="cm")
 
-    #plot_crowding_trend(condition="ax", normalize=True) # ax or xax
-    plot_crowding_condition_trend()
-    #plot_crowding_vs_strength(mode="a_ax") # a_ax, a_xax, ax_xax
+    #plot_crowding_distance_trend(condition="ax", normalize=True) # ax or xax
+    #plot_crowding_distance_trend(condition="xax", normalize=True) # ax or xax
+    #plot_crowding_absolute_a()
+    #plot_crowding_condition_trend_normalized(distance=20)
+    #plot_crowding_vs_strength(distance=20, mode="a_xax") # a_ax, a_xax, ax_xax
+    #plot_crowding_vs_strength(mode="a_ax")
+    #plot_crowding_vs_strength(mode="ax_xax")

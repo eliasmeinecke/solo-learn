@@ -24,8 +24,7 @@ with open(Path("linear_models_config.json")) as f:
     LINEAR_CONFIGS = json.load(f)
     
 T_POST = v2.Compose([
-        v2.Resize(256),
-        #v2.Resize(256, interpolation=InterpolationMode.BICUBIC, antialias=True),
+        v2.Resize(256, interpolation=InterpolationMode.BICUBIC, antialias=True),
         v2.CenterCrop(224),
         v2.ToImage(),
         v2.ToDtype(
@@ -51,14 +50,14 @@ def get_gaze_by_filename_map():
 
 
 def load_imagenet_class_map():
-    with open("imagenet_class_index.json") as f:
+    with open("imagenet_class_index.json", "r") as f:
         data = json.load(f)
-    # Format:
-    # {"0": ["n01440764", "tench"], ...}
-    mapping = {}
-    for idx, (synset, _) in data.items():
-        mapping[synset] = int(idx)
-    return mapping
+    return {int(k): v[1].replace("_", " ").title() for k, v in data.items()}
+
+
+def build_filename_to_label_map():
+    ds = ImageFolder(root=IMAGENET_VAL_PATH)
+    return {Path(p).name: label for p, label in ds.samples}
 
 
 # SETUP MODEL + FOVEATION

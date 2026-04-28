@@ -10,11 +10,12 @@ def compute_centroid(mask):
     m = cv2.moments(mask_uint)
 
     if m["m00"] == 0:
-        return None, None
+        return None
 
-    cx = m["m10"] / m["m00"]
-    cy = m["m01"] / m["m00"]
-    return cx, cy
+    return np.array([
+        m["m10"] / m["m00"],
+        m["m01"] / m["m00"]
+    ], dtype=np.float32)
 
 
 def fill_mask_holes_floodfill(mask):

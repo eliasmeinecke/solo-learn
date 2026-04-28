@@ -19,13 +19,11 @@ class OOCDatasetBase(Dataset):
 
         self.metadata = pd.read_csv(root / "metadata.csv")
 
-        self.class_map = load_imagenet_class_map()
-
         self.samples = []
         for _, row in self.metadata.iterrows():
             img_name = row["image_id"] + ".JPEG"
 
-            label = self.class_map[row["class_hash"]]
+            label = row["class_index"]
             
             mask_name = img_name.replace(".JPEG", ".png")
             mask_path = self.root / "masks" / mask_name

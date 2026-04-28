@@ -71,18 +71,18 @@ EXACT_FOVEATION_ORDER = [
         "base",
         "crop",
         "blur-light",
-        "blur",
+        "blur-medium",
         "blur-strong",
         "cm-light",
-        "cm",
+        "cm-medium",
         "cm-strong",
 ]
 
 FOVEATION_PALETTE = {
     "base": "#4D4D4D",     
     "crop": "#E69F00",     
-    "blur": "#4C9F70",     
-    "cm": "#5E3C99",     
+    "blur": "#4C956C",     
+    "cm": "#9D4EDD",     
 }
 
 OOC_DATASET_ORDER = ["Original", "Object-Only", "OOC"]
@@ -172,13 +172,20 @@ def get_foveation_palette():
         "crop": "#E69F00",
         # blur
         "blur-light":  "#A3C9A8",
-        "blur": "#4C956C",
+        "blur-medium": "#4C956C",
         "blur-strong": "#1B4332",
         # cm
         "cm-light":  "#CDB4DB",
-        "cm": "#9D4EDD",
+        "cm-medium": "#9D4EDD",
         "cm-strong": "#5A189A",
     }
+    
+    
+def format_label(name):
+    if "-" in name:
+        base, strength = name.split("-")
+        return f"{base}\n{strength}"
+    return name
 
 
 def extract_foveation_type(df):

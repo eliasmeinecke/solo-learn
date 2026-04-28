@@ -163,9 +163,13 @@ def evaluate_full_ooc(model, device, model_name, foveation):
         res = evaluate_mode("ooc", seed=seed)
         ooc_runs.append(res)
         
-    ooc_acc = np.mean([r["acc"] for r in ooc_runs])
-    ooc_conf_correct = np.mean([r["conf_correct"] for r in ooc_runs])
-    ooc_conf_incorrect = np.mean([r["conf_incorrect"] for r in ooc_runs])
+    ooc_accs = [r["acc"] for r in ooc_runs]
+    ooc_conf_corrects = [r["conf_correct"] for r in ooc_runs]
+    ooc_conf_incorrects = [r["conf_incorrect"] for r in ooc_runs]
+    ooc_acc = np.mean(ooc_accs)
+    ooc_acc_std = np.std(ooc_accs)
+    ooc_conf_correct = np.mean(ooc_conf_corrects)
+    ooc_conf_incorrect = np.mean(ooc_conf_incorrects)
 
     return {
         "foveation": model_name,
@@ -179,6 +183,7 @@ def evaluate_full_ooc(model, device, model_name, foveation):
         "object_conf_incorrect": object_res["conf_incorrect"],
         
         "ooc_acc": ooc_acc,
+        "ooc_acc_std": ooc_acc_std,
         "ooc_conf_correct": ooc_conf_correct,
         "ooc_conf_incorrect": ooc_conf_incorrect
     }

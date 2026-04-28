@@ -38,31 +38,72 @@ def set_seed(seed):
 def evaluate_crowding(model, device, model_name, foveation, seeds):
     model.eval()
     model.to(device)
-    conditions = ["a", "ax", "xax"]
     distances = [5, 10, 20, 30, 50]
     results = []
     for d in distances:
         print(f"\n=== Distance: {d} ===")
-        # accumulators over seeds
-        stats = {
-            c: {"correct": 0, "conf_sum": 0.0, "n": 0}
-            for c in conditions
+        row = {
+            "foveation": model_name,
+            "distance": d,
         }
-        for seed in seeds:
-            set_seed(seed)
-            for cond in conditions:
+        # A CONDITION (NO SEEDS)
+        ds = CrowdingDataset(
+            transform=PILToTensor(),
+            condition="a",
+            flanker_distance=d
+        )
+        loader = DataLoader(ds, batch_size=1, shuffle=False, num_workers=4)
+        correct = 0
+        conf_sum = 0.0
+        n = 0
+        with torch.no_grad():
+            for img, label, gaze in loader:
+                img = img.to(device)
+                label = label.to(device)
+                gaze = gaze.to(device)
+                B, C, H, W = img.shape
+                gaze_abs = gaze.clone()
+                gaze_abs[0, 0] *= W
+                gaze_abs[0, 1] *= H
+                img = foveation(img, gaze_abs)
+                img = T_POST_CROWDING(img)
+                logits = model(img)
+                probs = torch.softmax(logits, dim=1)
+                top1 = probs.argmax(dim=1)
+                correct += int((top1 == label).item())
+                conf_sum += probs[0, top1].item()
+                n += 1
+        row["a_acc"] = correct / n
+        row["a_conf"] = conf_sum / n
+        
+        # for convenient plotting:
+        row["a_acc_std"] = 0.0
+        row["a_conf_std"] = 0.0
+
+        # AX / XAX (WITH SEEDS)
+        for cond in ["ax", "xax"]:
+            accs = []
+            confs_correct = []
+            confs_incorrect = []
+            for seed in seeds:
+                set_seed(seed)
                 ds = CrowdingDataset(
                     transform=PILToTensor(),
                     condition=cond,
                     flanker_distance=d
                 )
                 loader = DataLoader(ds, batch_size=1, shuffle=False, num_workers=4)
+                correct = 0
+                n = 0
+                conf_correct_sum = 0.0
+                conf_incorrect_sum = 0.0
+                n_correct = 0
+                n_incorrect = 0
                 with torch.no_grad():
                     for img, label, gaze in loader:
                         img = img.to(device)
                         label = label.to(device)
                         gaze = gaze.to(device)
-                        # gaze → absolute
                         B, C, H, W = img.shape
                         gaze_abs = gaze.clone()
                         gaze_abs[0, 0] *= W
@@ -72,20 +113,25 @@ def evaluate_crowding(model, device, model_name, foveation, seeds):
                         logits = model(img)
                         probs = torch.softmax(logits, dim=1)
                         top1 = probs.argmax(dim=1)
-                        correct = (top1 == label)
-                        stats[cond]["correct"] += int(correct.item())
-                        stats[cond]["conf_sum"] += probs[0, top1].item()
-                        stats[cond]["n"] += 1
-        # --- summarize per distance ---
-        row = {
-            "foveation": model_name,
-            "distance": d,
-        }
-        for cond in conditions:
-            acc = stats[cond]["correct"] / stats[cond]["n"]
-            conf = stats[cond]["conf_sum"] / stats[cond]["n"]
-            row[f"{cond}_acc"] = acc
-            row[f"{cond}_conf"] = conf
+                        conf = probs[0, top1].item()
+                        if top1 == label:
+                            correct += 1
+                            conf_correct_sum += conf
+                            n_correct += 1
+                        else:
+                            conf_incorrect_sum += conf
+                            n_incorrect += 1
+                        n += 1
+                accs.append(correct / n)
+                confs_correct.append(conf_correct_sum / max(n_correct, 1))
+                confs_incorrect.append(conf_incorrect_sum / max(n_incorrect, 1))
+            # --- aggregate ---
+            row[f"{cond}_acc"] = np.mean(accs)
+            row[f"{cond}_acc_std"] = np.std(accs, ddof=1)
+            row[f"{cond}_conf_correct"] = np.mean(confs_correct)
+            row[f"{cond}_conf_correct_std"] = np.std(confs_correct, ddof=1)
+            row[f"{cond}_conf_incorrect"] = np.mean(confs_incorrect)
+            row[f"{cond}_conf_incorrect_std"] = np.std(confs_incorrect, ddof=1)
         results.append(row)
     return results
 

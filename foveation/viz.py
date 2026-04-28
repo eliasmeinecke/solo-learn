@@ -10,7 +10,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from PIL import Image
-from pycocotools import mask as mask_util
+from pycocotools import mask as mask_utils
 
 import torch
 from torchvision.transforms import PILToTensor
@@ -24,10 +24,11 @@ from foveation.methods.gaze_crop import GazeCenteredCropGPU
 from foveation.methods.radial_blur import RadialBlurFoveation
 from foveation.methods.cm import CorticalMagnification
 
+from foveation.mask_centroids import compute_centroid, fill_mask_holes_floodfill
 from foveation.ooc.ooc_data import OOCOriginalDataset, OOCInpaintedDataset, OOCObjectOnlyDataset, OOCShuffledDataset
 from foveation.ooc.full_imagenet_ooc import ImageNetValOOC
 from foveation.crowding.crowding_helper import CrowdingDataset
-from foveation.utils import IMAGENET_VAL_PATH, MASK_JSON_PATH
+from foveation.utils import build_filename_to_label_map, load_imagenet_class_map, IMAGENET_VAL_PATH, MASK_JSON_PATH
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -57,14 +58,21 @@ def main():
     #viz_fov(samples, method="crop")
     #viz_fov(samples, method="blur")
     #viz_fov(samples, method="cm")
-    viz_blur_heatmaps(samples)
-    #viz_imagenet_fov_samples(3, remove_padding_bool=True) # might not work anymore?
-    #viz_imagenet_mask_samples(4)
+    #viz_mask_centroids()
+    #viz_blur_heatmaps(samples)
+    #viz_imagenet_fov_samples(3) # might not work anymore?
+    #viz_imagenet_mask_samples(2)
+    
+    #clean up:
     #viz_ooc_datasets(foveation="blur-light")
     #viz_full_imagenet_ooc(idx=200)
-    #viz_crowding_dataset(condition="ax", foveation="cm-strong")
-    #viz_crowding_dataset(condition="xax", foveation="blur-strong")
     
+    viz_crowding_dataset(condition="ax", foveation="cm-strong")
+    viz_crowding_dataset(condition="xax", foveation="blur-strong")
+    
+    
+FNAME_TO_IDX = build_filename_to_label_map()    
+IDX_TO_LABEL = load_imagenet_class_map()
 
 
 def viz_fov(samples, method="cm"):
@@ -299,6 +307,65 @@ def viz_blur_heatmaps(samples):
     plt.close()
 
     print(f"Saved {file_name}")   
+    
+    
+def viz_mask_centroids():
+    with open(MASK_JSON_PATH, "r") as f:
+        data = json.load(f)
+    # --- compute all distances ---
+    results = []
+    for idx, entry in data.items():
+        filename = entry["filename"]
+        mask = mask_utils.decode(entry["rle"])
+        c_raw = compute_centroid(mask)
+        c_flood = compute_centroid(fill_mask_holes_floodfill(mask))
+        if c_raw is None or c_flood is None:
+            continue
+        dist = np.linalg.norm(c_raw - c_flood)
+        label = FNAME_TO_IDX.get(filename, None)
+        class_name = IDX_TO_LABEL.get(label, "unknown") if label is not None else "unknown"
+        results.append({
+            "mask": mask,
+            "mask_filled": fill_mask_holes_floodfill(mask),
+            "c_raw": c_raw,
+            "c_flood": c_flood,
+            "dist": dist,
+            "class_name": class_name
+        })
+    # STATS
+    dists = np.array([r["dist"] for r in results])
+    mean_dist = dists.mean()
+    q95 = np.quantile(dists, 0.95)
+    print(f"Mean Δ: {mean_dist:.2f}px")
+    print(f"95% quantile: {q95:.2f}px")
+    # FILTER TOP OUTLIERS
+    filtered = [r for r in results if r["dist"] >= q95]
+    # sort descending for nicer plots
+    filtered = sorted(filtered, key=lambda x: x["dist"], reverse=True)
+    samples = filtered[:4]
+    # PLOT
+    fig, axes = plt.subplots(2, len(samples), figsize=(4*len(samples), 8))
+    for i, r in enumerate(samples):
+        # --- raw ---
+        ax = axes[0, i]
+        ax.imshow(r["mask"], cmap="gray")
+        ax.scatter(*r["c_raw"], c="red", s=20)
+        ax.scatter(*r["c_flood"], c="blue", s=20)
+        ax.set_title(f"{r['class_name']}\nΔ = {r['dist']:.1f}px")
+        ax.axis("off")
+        if i == 0:
+            ax.legend(["raw", "flood"])
+        # --- filled ---
+        ax = axes[1, i]
+        ax.imshow(r["mask_filled"], cmap="gray")
+        ax.scatter(*r["c_flood"], c="blue", s=20)
+        ax.axis("off")
+    plt.tight_layout()
+    base_dir = Path(__file__).resolve().parent
+    out_path = base_dir / "plots" / "mask_json" / "mask_centroid_outliers.png"
+    plt.savefig(out_path, dpi=200)
+    plt.close()
+    print(f"Saved → {out_path}")
 
     
 def viz_imagenet_fov_samples(n, remove_padding_bool):
@@ -407,6 +474,7 @@ def viz_imagenet_mask_samples(n):
     }
 
     total = len(val_ds)
+    #indices = [384, X]
     indices = random.sample(range(total), n)
     
     for i in indices:
@@ -421,8 +489,10 @@ def viz_imagenet_mask_samples(n):
         img = val_ds[i][0]
         W_img, H_img = img.size
         dp = json_by_filename[filename]
+        idx = FNAME_TO_IDX.get(filename)
+        label = IDX_TO_LABEL.get(idx)
         
-        mask = mask_util.decode(dp["rle"])
+        mask = mask_utils.decode(dp["rle"])
         H_mask, W_mask = mask.shape
         mask_resized = cv2.resize(
             mask.astype(np.uint8),
@@ -472,7 +542,7 @@ def viz_imagenet_mask_samples(n):
         # Floodfill centroid (from JSON)
         ax.scatter(cx_abs, cy_abs, c="blue", s=40, label="Centroid")
 
-        title = f"Index {i}\n"
+        title = f"Label {label}\n"
         if area_mask_rel is not None:
             title += f"Mask area: {area_mask_rel:.3f} | "
         if area_bbox_rel is not None:
@@ -510,10 +580,10 @@ def viz_ooc_datasets(n_samples=3, foveation=None):
     )
     
     datasets_dict = {
-        "original": OOCOriginalDataset(**common_kwargs), 
-        "inpainted": OOCInpaintedDataset(**common_kwargs), 
-        "object": OOCObjectOnlyDataset(**common_kwargs), 
-        "shuffle": OOCShuffledDataset(**common_kwargs)
+        "Original": OOCOriginalDataset(**common_kwargs), 
+        "Background-Only": OOCInpaintedDataset(**common_kwargs), 
+        "Object-Only": OOCObjectOnlyDataset(**common_kwargs), 
+        "OOC": OOCShuffledDataset(**common_kwargs)
     }
     
     if foveation:
@@ -537,6 +607,7 @@ def viz_ooc_datasets(n_samples=3, foveation=None):
             dataset = datasets_dict[name]
 
             img, label, gaze = dataset[idx]
+            label_str = IDX_TO_LABEL.get(label)
 
             if torch.is_tensor(img):
                 img_np = img.permute(1,2,0).cpu().numpy()
@@ -563,7 +634,7 @@ def viz_ooc_datasets(n_samples=3, foveation=None):
             ax.imshow(img_np)
             ax.scatter(gx, gy, c="red", s=30)
 
-            ax.set_title(f"{name}\nlabel={label}")
+            ax.set_title(f"Label: {label_str}")
             ax.axis("off")
 
     plt.tight_layout()

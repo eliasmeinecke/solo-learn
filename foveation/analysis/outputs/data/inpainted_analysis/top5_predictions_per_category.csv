@@ -1,0 +1,16 @@
+background_category,pred_class,count,rank
+human_related,sliding_door,11,1
+human_related,patio,9,2
+human_related,dam,8,3
+human_related,worm_fence,8,4
+human_related,chest,8,5
+misc,strainer,2,1
+misc,chest,2,2
+misc,window_shade,2,3
+misc,French_loaf,1,4
+misc,purse,1,5
+nature,sandbar,26,1
+nature,alp,21,2
+nature,hay,17,3
+nature,breakwater,14,4
+nature,stone_wall,13,5
