@@ -8,12 +8,14 @@ import torch
 import matplotlib.pyplot as plt
 
 import torch.nn.functional as F
+from torchvision.transforms import PILToTensor
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 
 from foveation.utils import build_model_and_foveation, T_POST, load_imagenet_class_map
 from foveation.ooc.ooc_utils import load_data
+from foveation.crowding.crowding_helper import CrowdingDataset
 from foveation.FovEx import FovExWrapper
 
 
@@ -103,10 +105,29 @@ def main(dataset_name, indices):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # --- data ---
-    loader = load_data(dataset_name)
-    dataset = loader.dataset
-
+    dataset_name_map = {
+        "original": "Original",
+        "object": "Object-Only",
+        "ooc": "Out-of-Context",
+        "crowding": "Crowding"
+    }
+    
+    model_name_map = {
+        "base": "Base",
+        "crop": "Crop",
+        "cm-strong": "CM-Strong"
+    }
+    if dataset_name in ["original", "object", "ooc"]:
+        # --- data ---
+        loader = load_data(dataset_name)
+        dataset = loader.dataset
+    else:
+        dataset = CrowdingDataset(transform=PILToTensor(), condition="xax")
+        rng = random.Random()  # eigener RNG ohne festen Seed
+        indices = rng.sample(range(len(dataset)), len(indices))
+    
+    clean_dataset_name = dataset_name_map[dataset_name]
+    
     # --- models ---
     models = {}
     foveations = {}
@@ -117,19 +138,20 @@ def main(dataset_name, indices):
         models[m] = model
         foveations[m] = foveation
         fovex_models[m] = build_fovex(model, device)
-        
+
     for idx in indices:
+        
         img, label, gaze = dataset[idx]
+        gt_name = IDX_TO_NAME[label]
 
         # --- figure ---
         fig, axes = plt.subplots(
-            2, len(MODELS),
-            figsize=(3.5 * len(MODELS), 5),
-            gridspec_kw={"wspace": 0.05, "hspace": 0.1}
+            1, len(MODELS),
+            figsize=(3.2 * len(MODELS), 3.2)
         )
 
-        # --- GT label ---
-        gt_name = IDX_TO_NAME[label]
+        if len(MODELS) == 1:
+            axes = [axes]
 
         for col_idx, m in enumerate(MODELS):
 
@@ -161,10 +183,8 @@ def main(dataset_name, indices):
             # --- visualization base ---
             img_fov_vis = img_fov.float() / 255.0
 
-            # --- model input ---
+            # --- model prediction ---
             img_input = T_POST(img_fov)
-
-            # --- prediction ---
             outputs = model(img_input)
             pred = outputs.argmax(dim=1).item()
             pred_name = IDX_TO_NAME[pred]
@@ -173,23 +193,7 @@ def main(dataset_name, indices):
             color = "green" if correct else "red"
 
             # ======================
-            # GradCAM
-            # ======================
-            cam_map = run_gradcam(model, img_input, label)
-            vis_cam = visualize_cam(img_input, cam_map)
-
-            ax = axes[0, col_idx]
-            ax.imshow(vis_cam)
-            ax.axis("off")
-
-            ax.set_title(
-                f"{m}\n{pred_name}",
-                color=color,
-                fontsize=10
-            )
-
-            # ======================
-            # FovEx
+            # FovEx ONLY
             # ======================
             heatmap, fixations = run_fovex(fovex, img_fov_224, label, device)
 
@@ -200,37 +204,44 @@ def main(dataset_name, indices):
                 mode="bilinear",
                 align_corners=False
             ).squeeze().cpu().numpy()
-
+            
             H, W = img_fov_vis.shape[-2:]
             y_fix = (fixations[:, 0] + 1) * (H / 2)
             x_fix = (fixations[:, 1] + 1) * (W / 2)
+            x_fix = np.clip(x_fix, 0, W - 1)
+            y_fix = np.clip(y_fix, 0, H - 1)
 
-            vis_fovex = visualize_fovex(img_fov_vis, heatmap_resized)
+            vis = visualize_fovex(img_fov_vis, heatmap_resized)
 
-            ax = axes[1, col_idx]
-            ax.imshow(vis_fovex)
-            #ax.plot(x_fix, y_fix, 'x', color='yellow', markersize=4)
+            ax = axes[col_idx]
+            ax.imshow(vis)
+            ax.scatter(x_fix, y_fix, c="yellow", s=8, marker="x")
             ax.axis("off")
 
-        plt.tight_layout(rect=[0.08, 0, 1, 0.95])
-        
-        left = min(ax.get_position().x0 for ax in axes.flatten())
-        x_text = left - 0.04
+            # --- clean title ---
+            ax.set_title(
+                f"{model_name_map[m]}\n{pred_name}",
+                color=color,
+                fontsize=10
+            )
 
-        y0 = axes[0, 0].get_position().y0 + axes[0, 0].get_position().height / 2
-        y1 = axes[1, 0].get_position().y0 + axes[1, 0].get_position().height / 2
-
-        fig.text(x_text, y0, "Grad-CAM", rotation=90, va="center", fontsize=12)
-        fig.text(x_text, y1, "FovEx", rotation=90, va="center", fontsize=12)
-        
-        # --- global title ---
-        plt.suptitle(
-            f"Ground Truth: {gt_name}",
-            fontsize=14,
-            y=1
+        # ======================
+        # GLOBAL TITLE (clean!)
+        # ======================
+        fig.text(
+            0.5, 0.98,
+            f"{clean_dataset_name}  |  GT: {gt_name}",
+            ha="center",
+            fontsize=12,
+            fontweight="bold"
         )
 
-        out_path = OUT_DIR / f"comparison_{idx}_{dataset_name}.png"
+        plt.tight_layout(rect=[0, 0, 1, 0.92])
+
+        # ======================
+        # SAVE
+        # ======================
+        out_path = OUT_DIR / f"fovex_{idx}_{dataset_name}.png"
         plt.savefig(out_path, dpi=200, bbox_inches="tight")
         plt.close()
 
@@ -249,13 +260,13 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", type=str, default="original")
     args = parser.parse_args()
     
-    # look at: 501, 42,  
+    # look at:   
     # include original: 84, 42, 1107, 142?, 228, 
     # include inpainted:
     # include object: 228
     # include ooc: 84, 42, 142, 228, 
     # tested: 69, 302, 209, 51, 563
-    indices = [1]
+    indices = [228, 42, 84, 142]
     main(args.dataset, indices)
     
     

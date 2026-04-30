@@ -58,4 +58,4 @@ class GazeCenteredCropGPU(nn.Module):
         # tensor crop
         img = img[:, :, y1:y2, x1:x2]
 
-        return img
+        return img.clamp(0, 255).to(torch.uint8)

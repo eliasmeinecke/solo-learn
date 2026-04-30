@@ -20,12 +20,9 @@ from torchvision.transforms.functional import pil_to_tensor
 from torchvision.datasets import ImageFolder
 
 from foveation.factory import setup_exact_foveation
-from foveation.methods.gaze_crop import GazeCenteredCropGPU
-from foveation.methods.radial_blur import RadialBlurFoveation
-from foveation.methods.cm import CorticalMagnification
 
 from foveation.mask_centroids import compute_centroid, fill_mask_holes_floodfill
-from foveation.ooc.ooc_data import OOCOriginalDataset, OOCInpaintedDataset, OOCObjectOnlyDataset, OOCShuffledDataset
+from foveation.ooc.ooc_data import OOCOriginalDataset, OOCInpaintedDataset
 from foveation.ooc.full_imagenet_ooc import ImageNetValOOC
 from foveation.crowding.crowding_helper import CrowdingDataset
 from foveation.utils import build_filename_to_label_map, load_imagenet_class_map, IMAGENET_VAL_PATH, MASK_JSON_PATH
@@ -34,7 +31,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main():
 
-    indices = [100_003]
+    indices = [42_000] # 100_003, 299_507, 180_000, 676_000, 42_000, 968_200, 25_000
 
     samples = []
 
@@ -58,17 +55,13 @@ def main():
     #viz_fov(samples, method="crop")
     #viz_fov(samples, method="blur")
     #viz_fov(samples, method="cm")
-    #viz_mask_centroids()
     #viz_blur_heatmaps(samples)
-    #viz_imagenet_fov_samples(3) # might not work anymore?
-    #viz_imagenet_mask_samples(2)
-    
-    #clean up:
-    #viz_ooc_datasets(foveation="blur-light")
-    #viz_full_imagenet_ooc(idx=200)
-    
-    viz_crowding_dataset(condition="ax", foveation="cm-strong")
-    viz_crowding_dataset(condition="xax", foveation="blur-strong")
+    #viz_mask_centroids()
+    #viz_imagenet_mask_samples(4)
+    #viz_imagenet_fov_samples()
+    #viz_ooc_background_examples()
+    #viz_full_imagenet_ooc()
+    #viz_crowding_overview()
     
     
 FNAME_TO_IDX = build_filename_to_label_map()    
@@ -368,97 +361,71 @@ def viz_mask_centroids():
     print(f"Saved → {out_path}")
 
     
-def viz_imagenet_fov_samples(n, remove_padding_bool):
-
-    crop_fov = GazeCenteredCropGPU()
-    blur_fov = RadialBlurFoveation()
-    cm_fov = CorticalMagnification()
-    val_ds = ImageFolder("/home/data/ILSVRC_real/val", transform=None)
-
+def viz_imagenet_fov_samples():
+    crop_fov = setup_exact_foveation("crop")
+    blur_fov = setup_exact_foveation("blur-strong")
+    cm_fov = setup_exact_foveation("cm-strong")
+    val_ds = ImageFolder(IMAGENET_VAL_PATH)
     json_path = "/home/data/elias/imagenet_sam_masks/imagenet_val_gaze_only.json"
-
     with open(json_path, "r") as f:
         json_data = json.load(f)
-
     json_by_filename = {
         v["filename"]: v
         for v in json_data.values()
     }
-
-    total = len(val_ds)
-    indices = random.sample(range(total), n)
-
-    fig, axes = plt.subplots(n, 4, figsize=(16, 4*n))
-
+    # --- pick 2 samples ---
+    indices = random.sample(range(len(val_ds)), 2)
+    fig, axes = plt.subplots(2, 4, figsize=(12, 6))
+    col_titles = ["Original", "Crop", "Blur-Strong", "CM-Strong"]
     for row, i in enumerate(indices):
-
-        path = val_ds.samples[i][0]
+        path, label = val_ds.samples[i]
         filename = Path(path).name
-
         if filename not in json_by_filename:
-            print(f"WARNING: {filename} not found in JSON")
             continue
-
         img = val_ds[i][0]
+        img_np = np.array(img)
         dp = json_by_filename[filename]
-        img_tensor = pil_to_tensor(img).unsqueeze(0)            
-        _, _, H_img, W_img = img_tensor.shape            
-
-        cx_rel = dp["centroid"]["x_rel"]
-        cy_rel = dp["centroid"]["y_rel"]
-
-        cx_abs_original = cx_rel * W_img
-        cy_abs_original = cy_rel * H_img
-        
-        cx_abs = cx_rel * W_img
-        cy_abs = cy_rel * H_img
-
-        gaze = torch.tensor([[cx_abs, cy_abs]], dtype=torch.float32)
-
+        img_tensor = pil_to_tensor(img).unsqueeze(0)
+        _, _, H, W = img_tensor.shape
+        cx = dp["centroid"]["x_rel"] * W
+        cy = dp["centroid"]["y_rel"] * H
+        gaze = torch.tensor([[cx, cy]], dtype=torch.float32)
         with torch.no_grad():
-
             crop_img = crop_fov(img_tensor.clone(), gaze, None)
             blur_img = blur_fov(img_tensor.clone(), gaze, None)
             cm_img = cm_fov(img_tensor.clone(), gaze, None)
-
         def to_np(x):
-            x = x.squeeze(0).permute(1,2,0).cpu().numpy()
-            return x.astype(np.uint8)
-
-        crop_np = to_np(crop_img)
-        blur_np = to_np(blur_img)
-        cm_np = to_np(cm_img)
-
-        img_np = np.array(img)
-
-        axes[row,0].imshow(img_np)
-        axes[row,0].scatter(cx_abs_original, cy_abs_original, c="red", s=20)
-        axes[row,0].set_title("Original")
-
-        axes[row,1].imshow(crop_np)
-        axes[row,1].set_title("Crop")
-
-        axes[row,2].imshow(blur_np)
-        axes[row,2].set_title("Blur")
-
-        axes[row,3].imshow(cm_np)
-        axes[row,3].set_title("CM")
-
+            return x.squeeze(0).permute(1,2,0).cpu().numpy().astype(np.uint8)
+        imgs = [
+            img_np,
+            to_np(crop_img),
+            to_np(blur_img),
+            to_np(cm_img)
+        ]
         for col in range(4):
-            axes[row,col].axis("off")
+            axes[row, col].imshow(imgs[col])
+            axes[row, col].axis("off")
+        # --- gaze only on original ---
+        axes[row, 0].scatter(cx, cy, c="red", s=20)
+    plt.tight_layout(rect=[0.05, 0, 1, 0.92])
 
-    plt.tight_layout()
-    
-    suffix = "nopad" if remove_padding_bool else "withpad"
-    save_name = f"imagenet_examples_{suffix}.png"
-    
-    base_dir = Path(__file__).resolve().parent
-    out_path = base_dir / "plots" / "imagenet_fovs" / save_name
-
+    # column titles
+    for col in range(4):
+        ax = axes[0, col]
+        pos = ax.get_position()
+        x = pos.x0 + pos.width / 2
+        fig.text(
+            x, 0.95,
+            col_titles[col],
+            ha="center",
+            fontsize=12,
+            fontweight="bold"
+        )
+    out_path = Path(__file__).resolve().parent / "plots" / "imagenet_fovs" / "imagenet_examples.png"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=200)
     plt.close()
-    print(f"Saved {save_name}")
+    print("Saved imagenet_examples.png")
     
     
 def viz_imagenet_mask_samples(n):
@@ -542,7 +509,7 @@ def viz_imagenet_mask_samples(n):
         # Floodfill centroid (from JSON)
         ax.scatter(cx_abs, cy_abs, c="blue", s=40, label="Centroid")
 
-        title = f"Label {label}\n"
+        title = f"Label: {label}\n"
         if area_mask_rel is not None:
             title += f"Mask area: {area_mask_rel:.3f} | "
         if area_bbox_rel is not None:
@@ -564,168 +531,195 @@ def viz_imagenet_mask_samples(n):
         print(f"Saved {save_name}")
         
 
-def viz_ooc_datasets(n_samples=3, foveation=None):
-
+def viz_ooc_background_examples():
     root = Path("/home/data/elias/ImageNet-OOC1k_flattened")
-
     T_pre = v2.Compose([
         v2.Resize(540),
         v2.ToImage(),
         v2.ToDtype(torch.uint8)
     ])
+    ds_original = OOCOriginalDataset(root=root, transform=T_pre)
+    ds_inpainted = OOCInpaintedDataset(root=root, transform=T_pre)
+    # --- pick 3 samples ---
+    indices = random.sample(range(len(ds_original)), 3)
+    # --- layout: 1 row, 6 columns ---
+    fig, axes = plt.subplots(1, 6, figsize=(12, 3))
+    def to_np(img):
+        if torch.is_tensor(img):
+            return img.permute(1, 2, 0).cpu().numpy()
+        return np.array(img)
+    for i, idx in enumerate(indices):
+        col = i * 2
+        img_orig, label, gaze = ds_original[idx]
+        img_bg, _, _ = ds_inpainted[idx]
+        img_orig = to_np(img_orig)
+        img_bg = to_np(img_bg)
+        # --- original ---
+        axes[col].imshow(img_orig)
+        axes[col].axis("off")
+        # --- background only ---
+        axes[col + 1].imshow(img_bg)
+        axes[col + 1].axis("off")
+    plt.tight_layout(rect=[0, 0, 1, 0.9])
 
-    common_kwargs = dict(
-        root=root,
-        transform=T_pre,
+    fig.text(
+        0.5, 0.92,
+        "Original vs Background-Only",
+        ha="center",
+        fontsize=13,
+        fontweight="bold"
     )
+    # --- save ---
+    out_path = Path(__file__).resolve().parent / "plots" / "ooc" / "ooc_background_examples.png"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=200)
+    plt.close()
+    print("Saved ooc_background_examples.png")
     
-    datasets_dict = {
-        "Original": OOCOriginalDataset(**common_kwargs), 
-        "Background-Only": OOCInpaintedDataset(**common_kwargs), 
-        "Object-Only": OOCObjectOnlyDataset(**common_kwargs), 
-        "OOC": OOCShuffledDataset(**common_kwargs)
+    
+def viz_full_imagenet_ooc():
+    modes = {
+        "original": "Original",
+        "object": "Object-Only",
+        "ooc": "Out-of-Context"
     }
-    
-    if foveation:
-        foveation = setup_exact_foveation(foveation)
-    
-    dataset_names = list(datasets_dict.keys())
-    num_datasets = len(dataset_names)
-
-    fig, axes = plt.subplots(
-        n_samples,
-        num_datasets,
-        figsize=(3*num_datasets, 3*n_samples)
-    )
-
-    indices = random.sample(range(len(next(iter(datasets_dict.values())))), n_samples)
-
+    mode_keys = list(modes.keys())
+    datasets = {
+        m: ImageNetValOOC(mode=m, seed=42, transform=None)
+        for m in mode_keys
+    }
+    # --- random indices ---
+    total = len(next(iter(datasets.values())))
+    indices = random.sample(range(total), 2)
+    # --- figure ---
+    fig, axes = plt.subplots(2, 3, figsize=(9, 6))
     for row, idx in enumerate(indices):
-
-        for col, name in enumerate(dataset_names):
-
-            dataset = datasets_dict[name]
-
-            img, label, gaze = dataset[idx]
-            label_str = IDX_TO_LABEL.get(label)
-
-            if torch.is_tensor(img):
-                img_np = img.permute(1,2,0).cpu().numpy()
-            else:
-                img_np = np.array(img)
-
-            H, W = img_np.shape[:2]
-
+        for col, mode in enumerate(mode_keys):
+            ds = datasets[mode]
+            img, label, gaze = ds[idx]
+            img = np.array(img)
+            H, W = img.shape[:2]
             gx = gaze[0].item() * W
             gy = gaze[1].item() * H
-
-            # optional foveation
-            if foveation is not None:
-                img_tensor = torch.tensor(img_np).permute(2,0,1).unsqueeze(0).float()
-                gaze_abs = torch.tensor([[gx, gy]])
-
-                with torch.no_grad():
-                    img_fov = foveation(img_tensor, gaze_abs, None)
-
-                img_np = img_fov.squeeze(0).permute(1,2,0).cpu().numpy().astype(np.uint8)
-
-            ax = axes[row, col] if n_samples > 1 else axes[col]
-
-            ax.imshow(img_np)
-            ax.scatter(gx, gy, c="red", s=30)
-
-            ax.set_title(f"Label: {label_str}")
+            ax = axes[row, col]
+            ax.imshow(img)
+            ax.scatter(gx, gy, c="red", s=20)
             ax.axis("off")
-
-    plt.tight_layout()
-    
-    save_name=f"ooc_example.png"
+    plt.tight_layout(rect=[0.05, 0, 1, 0.95])
+    fig.text(
+        0.5, 0.97,
+        "Out-of-Context Evaluation Examples",
+        ha="center",
+        fontsize=13,
+        fontweight="bold"
+    )
+    # --- column titles ---
+    for col, mode in enumerate(mode_keys):
+        pos = axes[0, col].get_position()
+        x = pos.x0 + pos.width / 2
+        y = pos.y1 + 0.015 
+        fig.text(
+            x, y,
+            modes[mode],
+            ha="center",
+            fontsize=11,
+            fontweight="bold"
+        )
+    save_name = "full_ooc_examples.png"
     base_dir = Path(__file__).resolve().parent
     out_path = base_dir / "plots" / "ooc" / save_name
-
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=200)
     plt.close()
     print(f"Saved {save_name}")
     
-    
-def viz_full_imagenet_ooc(idx=100):
-    modes = ["original", "object", "ooc"]
-    fig, axes = plt.subplots(1, 3, figsize=(15,5))
 
-    for ax, mode in zip(axes, modes):
-        ds = ImageNetValOOC(mode=mode, seed=42, transform=None) # IMPORTANT: raw PIL image for mpl
-        img, label, gaze = ds[idx]
-        img = np.array(img)
-        H, W = img.shape[:2]
-        gx = gaze[0].item() * W
-        gy = gaze[1].item() * H
-        ax.imshow(img)
-        ax.scatter(gx, gy, s=20, c="cyan", edgecolors="black", linewidths=1.5)
-        ax.set_title(f"{mode}\nlabel={label}")
-        ax.axis("off")
-    plt.tight_layout()
-    
-    save_name=f"full_ooc_example.png"
-    base_dir = Path(__file__).resolve().parent
-    out_path = base_dir / "plots" / "ooc" / save_name
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(out_path, dpi=200)
-    plt.close()
-    print(f"Saved {save_name}")
-    
-def viz_crowding_dataset(condition, foveation=None, n=3):
-    
-    dataset = CrowdingDataset(transform=PILToTensor(), condition=condition)
-    indices = random.sample(range(len(dataset)), n)
-    
-    if foveation:
-        foveation = setup_exact_foveation(foveation)
-
-    fig, axes = plt.subplots(1, n, figsize=(4*n, 4))
-
-    if n == 1:
-        axes = [axes]
-
-    for ax, idx in zip(axes, indices):
-
-        img, label, gaze = dataset[idx]
-
-        # tensor → numpy
-        if torch.is_tensor(img):
-            img_np = img.permute(1, 2, 0).numpy()
-        else:
-            img_np = np.array(img)
-
+def viz_crowding_overview():
+    conditions = ["a", "ax", "xax"]
+    fov_models = ["crop", "blur-nosal", "cm-strong"]
+    fov_names = {
+        "crop": "Crop",
+        "blur-nosal": "Blur-Medium",
+        "cm-strong": "CM-Strong"
+    }
+    # --- SAME index for all ---
+    base_ds = CrowdingDataset(transform=PILToTensor(), condition="a")
+    #idx = random.randint(0, len(base_ds) - 1)
+    idx = 737
+    # --- datasets ---
+    datasets = {
+        c: CrowdingDataset(transform=PILToTensor(), condition=c)
+        for c in conditions
+    }
+    # --- foveations ---
+    fovs = {
+        m: setup_exact_foveation(m)
+        for m in fov_models
+    }
+    fig, axes = plt.subplots(2, 3, figsize=(9, 6))
+    # ROW 1: CONDITIONS (RAW)
+    for col, cond in enumerate(conditions):
+        img, label, gaze = datasets[cond][idx]
+        img_np = img.permute(1, 2, 0).numpy()
         H, W = img_np.shape[:2]
-
         gx = gaze[0].item() * W
         gy = gaze[1].item() * H
-
-        # optional foveation
-        if foveation is not None:
-            img_tensor = torch.tensor(img_np).permute(2,0,1).unsqueeze(0).float()
-            gaze_abs = torch.tensor([[gx, gy]])
-
-            with torch.no_grad():
-                img_fov = foveation(img_tensor, gaze_abs, None)
-
-            img_np = img_fov.squeeze(0).permute(1,2,0).cpu().numpy().astype(np.uint8)
-                
+        ax = axes[0, col]
         ax.imshow(img_np)
-        ax.scatter(gx, gy, c="red", s=40)
-
-        ax.set_title(f"Label: {label}")
         ax.axis("off")
-
-    plt.suptitle(f"Crowding Condition: {dataset.condition}")
-    plt.tight_layout()
-    
-    save_name=f"crowding_example_{condition}.png"
+    # ROW 2: FOVEATION (XAX)
+    img_np = img.permute(1, 2, 0).numpy()
+    H, W = img_np.shape[:2]
+    gx = gaze[0].item() * W
+    gy = gaze[1].item() * H
+    for col, m in enumerate(fov_models):
+        fov = fovs[m]
+        img_tensor = img.unsqueeze(0).float()
+        gaze_abs = torch.tensor([[gx, gy]])
+        with torch.no_grad():
+            img_fov = fov(img_tensor, gaze_abs, None)
+        out = (
+            img_fov.squeeze(0)
+            .permute(1, 2, 0)
+            .cpu()
+            .numpy()
+            .astype(np.uint8)
+        )
+        ax = axes[1, col]
+        ax.imshow(out)
+        ax.axis("off")
+    # COLUMN TITLES
+    plt.tight_layout(rect=[0.05, 0.05, 1, 0.9])
+    col_titles = ["a", "ax", "xax"]
+    for col, title in enumerate(col_titles):
+        pos = axes[0, col].get_position()
+        x = pos.x0 + pos.width / 2
+        y = pos.y1 + 0.015
+        fig.text(x, y, title, ha="center", fontsize=11, fontweight="bold")
+    # =========================
+    # FOVEATION LABELS (ROW 2)
+    # =========================
+    for col, m in enumerate(fov_models):
+        pos = axes[1, col].get_position()
+        x = pos.x0 + pos.width / 2
+        y = pos.y0 - 0.03   # ← Abstand unter Bild (tweakbar!)
+        fig.text(x, y, fov_names[m], ha="center", fontsize=10, fontweight="bold")
+    # ROW LABELS
+    for row, name in enumerate(["Conditions", "Foveation (xax)"]):
+        pos = axes[row, 0].get_position()
+        y = pos.y0 + pos.height / 2
+        fig.text(0.02, y, name, va="center", rotation=90, fontsize=11)
+    # GLOBAL TITLE
+    fig.text(
+        0.5, 0.95,
+        "Crowding Setup and Foveation Effect",
+        ha="center",
+        fontsize=13,
+        fontweight="bold"
+    )
+    save_name = "crowding_overview.png"
     base_dir = Path(__file__).resolve().parent
     out_path = base_dir / "plots" / "crowding" / save_name
-
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=200)
     plt.close()
