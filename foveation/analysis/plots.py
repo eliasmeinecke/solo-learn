@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import seaborn as sns
 from pathlib import Path
 import pandas as pd
@@ -321,7 +322,7 @@ def plot_ooc_delta_heatmap():
 
     df = load_analysis_data("full_ooc_results")
 
-    df["foveation"] = df["foveation"].str.replace("-nosal", "", regex=False)
+    df["foveation"] = df["foveation"].str.replace("-nosal", "-medium", regex=False)
     df_plot = df[["foveation", "original_acc", "object_acc", "ooc_acc"]].copy()
     df_plot = df_plot.rename(columns={"original_acc": "Original", "object_acc": "Object-Only", "ooc_acc": "OOC"})
 
@@ -605,7 +606,7 @@ def plot_color_std_object_only():
     df = df[df["variant"].isin(valid_variants)]
 
     # --- clean names ---
-    df["base_model"] = df["base_model"].str.replace("-nosal", "", regex=False)
+    df["base_model"] = df["base_model"].str.replace("-nosal", "-medium", regex=False)
 
     # --- compute std ---
     df_std = (
@@ -625,7 +626,7 @@ def plot_color_std_object_only():
     )
     df_std = df_std.sort_values("base_model")
 
-    df_std["group"] = df_std["base_model"].apply(get_group)
+    palette = get_foveation_palette()
 
     # --- plot ---
     plt.figure(figsize=(8, 4))
@@ -634,8 +635,8 @@ def plot_color_std_object_only():
         data=df_std,
         x="base_model",
         y="std",
-        hue="group",
-        palette=FOVEATION_PALETTE,
+        hue="base_model",
+        palette=palette,
         dodge=False
     )
 
@@ -906,6 +907,22 @@ def plot_model_ooc_confidence():
     # --- clean ---
     df_all["correct"] = df_all["correct"].astype(bool)
     df_all["model"] = df_all["model"].str.replace("-nosal", "", regex=False)
+    
+    df_all["model"] = df_all["model"].replace({
+        "base": "Base",
+        "crop": "Crop",
+        "cm-strong": "CM-Strong"
+    })
+    
+    df_all["dataset"] = df_all["dataset"].replace({
+        "original": "Original",
+        "inpainted": "Background-Only",
+        "object": "Object-Only",
+        "ooc": "OOC"
+    })
+    
+    models_clean = ["Base", "Crop", "CM-Strong"]
+    datasets_clean = ["Original", "Background-Only", "Object-Only", "OOC"]
 
     palette = {
         True: "#4C72B0",    # blau → korrekt
@@ -944,8 +961,8 @@ def plot_model_ooc_confidence():
         ax.grid(False)
 
     # --- add mean confidence annotation per subplot ---
-    for i, model in enumerate(models):
-        for j, dataset in enumerate(["original", "inpainted", "object", "ooc"]):
+    for i, model in enumerate(models_clean):
+        for j, dataset in enumerate(datasets_clean):
             ax = g.axes[i, j]
             subset = df_all[
                 (df_all["model"] == model) &
@@ -976,12 +993,6 @@ def plot_model_ooc_confidence():
                     edgecolor="none"
                 )
             )
-        
-    plt.suptitle(
-        "Confidence Distributions: Baseline vs Crop vs CM-Strong",
-        fontsize=13,
-        y=0.98
-    )
     
     g._legend.set_title("Prediction")
     for t, l in zip(g._legend.texts, ["Incorrect", "Correct"]):
@@ -999,7 +1010,7 @@ def plot_ooc_confidence_gaps(gap_mode=1):
     set_thesis_style()
 
     df = load_analysis_data("full_ooc_results")
-    df["foveation"] = (df["foveation"].str.replace("-nosal", "", regex=False))
+    df["foveation"] = (df["foveation"].str.replace("-nosal", "-medium", regex=False))
     df = df.rename(columns={"foveation":"model"})
     
     if gap_mode == 1:
@@ -1007,13 +1018,13 @@ def plot_ooc_confidence_gaps(gap_mode=1):
         correct_b = "object_conf_correct"
         incorrect_a = "original_conf_incorrect"
         incorrect_b = "object_conf_incorrect"
-        title = "Original → Object"
+        title = "Original → Object-Only"
     elif gap_mode == 2:
         correct_a = "object_conf_correct"
         correct_b = "ooc_conf_correct"
         incorrect_a = "object_conf_incorrect"
         incorrect_b = "ooc_conf_incorrect"
-        title = "Object → OOC"
+        title = "Object-Only → OOC"
     elif gap_mode == 3:
         correct_a = "original_conf_correct"
         correct_b = "ooc_conf_correct"
@@ -1058,15 +1069,15 @@ def plot_ooc_confidence_gaps(gap_mode=1):
         ax.set_title(panel_title)
         ax.legend().remove()
 
-    # shared legend
-    handles, labels = (
-        axes[0]
-        .get_legend_handles_labels()
-    )
+    legend_elements = [
+        Line2D([0], [0], color=FOVEATION_PALETTE["base"], linestyle="--", lw=2, label="base"),
+        Line2D([0], [0], color=FOVEATION_PALETTE["crop"], linestyle="--", lw=2, label="crop"),
+        Line2D([0], [0], color=FOVEATION_PALETTE["blur"], lw=2, marker="o", label="blur"),
+        Line2D([0], [0], color=FOVEATION_PALETTE["cm"], lw=2, marker="o", label="cm"),
+    ]
 
     fig.legend(
-        handles,
-        labels,
+        handles=legend_elements,
         loc="lower center",
         ncol=4,
         frameon=True
@@ -1087,7 +1098,7 @@ def plot_ooc_confidence_dynamics():
     
     df = load_analysis_data("full_ooc_results")
     
-    df["foveation"] = (df["foveation"].str.replace("-nosal", "", regex=False))
+    df["foveation"] = (df["foveation"].str.replace("-nosal", "-medium", regex=False))
     df["group"] = (df["foveation"].apply(get_group))
     
     # average over strengths
@@ -1142,7 +1153,7 @@ def plot_ooc_confidence_dynamics():
                 color=FOVEATION_PALETTE[group]
             )
         ax.set_xticks(x)
-        ax.set_xticklabels(["Original", "Object", "OOC"])
+        ax.set_xticklabels(["Original", "Object-Only", "OOC"])
         ax.set_xlabel("Dataset")
         ax.set_ylabel("Confidence")
         ax.set_title(title)
@@ -1189,8 +1200,6 @@ def plot_small_objects_accuracy():
     # --- filter small objects ---
     df_small = df_all[df_all["mask_area"] <= SMALL_THRESH].copy()
 
-    print(f"Total samples (small objects): {len(df_small)}")
-
     # --- compute accuracy per model ---
     df_acc = (
         df_small
@@ -1207,7 +1216,7 @@ def plot_small_objects_accuracy():
     df_acc["delta"] = df_acc["accuracy"] - base_acc
 
     # clean names
-    df_acc["model"] = df_acc["model"].str.replace("-nosal", "", regex=False)
+    df_acc["model"] = df_acc["model"].str.replace("-nosal", "-medium", regex=False)
     df_acc = df_acc[df_acc["model"] != "base"]
 
     # enforce order
@@ -1218,7 +1227,7 @@ def plot_small_objects_accuracy():
     )
     df_acc = df_acc.sort_values("model")
 
-    df_acc["group"] = df_acc["model"].apply(get_group)
+    palette = get_foveation_palette()
     
     # --- plot ---
     plt.figure(figsize=(7, 4))
@@ -1227,8 +1236,8 @@ def plot_small_objects_accuracy():
         data=df_acc,
         x="model",
         y="delta",
-        hue="group",
-        palette=FOVEATION_PALETTE
+        hue="model",
+        palette=palette
     )
 
     # value labels
@@ -1250,7 +1259,7 @@ def plot_small_objects_accuracy():
 
     plt.ylabel(f"Δ Accuracy vs Baseline ({base_acc:.3f}%)")
     plt.xlabel("Model")
-    plt.title(f"Performance on Small Objects (mask_area ≤ {SMALL_THRESH:.3f})")
+    plt.title(f"Performance on Small Objects (Rel. Mask Area ≤ {SMALL_THRESH:.3f})")
     
     plt.axhline(0, linestyle=":", linewidth=1, alpha=0.8, color="gray")
     plt.xticks(rotation=0)
@@ -1343,11 +1352,13 @@ def plot_accuracy_vs_size():
         marker="o",
         errorbar=None
     )
-
-    plt.xlabel("Object Size (mask_area)")
+    
+    plt.xlabel("Object Size (Rel. Mask Area)")
     plt.ylabel("Accuracy (%)")
     plt.title("Accuracy vs Object Size")
 
+    plt.legend(frameon=True)
+    
     plt.tight_layout()
 
     out_path = FIG_DIR / "size_analysis" / "accuracy_vs_size.pdf"
@@ -1456,12 +1467,12 @@ def plot_accuracy_vs_size_by_strength(method="blur"):
         marker="o"
     )
 
-    plt.xlabel("Object Size (mask_area)")
+    plt.xlabel("Object Size (Rel. Mask Area)")
     plt.ylabel("Δ Accuracy vs Baseline (%)")
     plt.title(f"{method.upper()}")
     
     plt.axhline(0, linestyle=":", linewidth=1, alpha=0.8, color="gray")
-    plt.legend(title="Strength", frameon=False)
+    plt.legend(frameon=True)
     plt.tight_layout()
     
     out_path = FIG_DIR / "size_analysis" / f"{method}_size_vs_accuracy.pdf"
@@ -1502,7 +1513,10 @@ def plot_crowding_distance_trend(condition="ax", normalize=True):
     plt.xlabel("Flanker Distance")
     plt.ylabel(ylabel)
     plt.title(f"Accuracy Trend vs Distance ({condition})")
-    plt.legend(title="Foveation", frameon=False)
+    if condition == "xax":
+        plt.legend().remove()
+    else:
+        plt.legend(frameon=True)
     plt.tight_layout()
     
     out_path = FIG_DIR / "crowding" / f"{condition}_fdistance_trend.pdf"
@@ -1510,99 +1524,84 @@ def plot_crowding_distance_trend(condition="ax", normalize=True):
     plt.close()
     print(f"Saved → {out_path}")
     
-
-def plot_crowding_absolute_a(distance=20):
-
+    
+def plot_crowding_intro(distance=20):
     set_thesis_style()
     df = load_analysis_data("crowding_results")
     df["foveation"] = df["foveation"].str.replace("-nosal", "-medium", regex=False)
-    # --- filter ---
     df = df[df["distance"] == distance].copy()
-    # --- to percent ---
-    df["a_acc"] = df["a_acc"] * 100
-    # --- ordering ---
-    order = [f for f in EXACT_FOVEATION_ORDER]
-    df["foveation"] = pd.Categorical(df["foveation"], categories=order, ordered=True)
-    df = df.sort_values("foveation")
-    df["foveation_label"] = df["foveation"].apply(format_label)
-    # palette
-    palette = get_foveation_palette()
-    # --- plot ---
-    plt.figure(figsize=(6, 4))
-    sns.barplot(
-        data=df,
-        x="foveation_label",
-        y="a_acc",
-        hue="foveation",
-        palette=palette
+    # --- prepare absolute ---
+    df_abs = df.copy()
+    df_abs["a_acc"] *= 100
+    df_abs["foveation"] = pd.Categorical(
+        df_abs["foveation"],
+        categories=EXACT_FOVEATION_ORDER,
+        ordered=True
     )
-    plt.xlabel("Foveation Type")
-    plt.ylabel("Accuracy (%)")
-    plt.title("Absolute Performance (Condition = a)")
-    plt.legend().remove()
-    # --- annotations ---
-    for i, (_, row) in enumerate(df.iterrows()):
-        plt.text(i, row["a_acc"] + 0.8, f"{row['a_acc']:.1f}", ha="center", fontsize=9)
-    plt.xticks(rotation=0)
-    # nicer limits
-    plt.ylim(0, df["a_acc"].max() + 5)
-    plt.tight_layout()
-    out_path = FIG_DIR / "crowding" / f"absolute_a_d{distance}.pdf"
-    plt.savefig(out_path)
-    plt.close()
-    print(f"Saved → {out_path}")
-
-
-def plot_crowding_condition_trend_normalized(distance=20):
-    set_thesis_style()
-    df = load_analysis_data("crowding_results")
-    df["foveation"] = df["foveation"].str.replace("-nosal", "-medium", regex=False)
-    # --- filter distance ---
-    df = df[df["distance"] == distance].copy()
-    # --- keep only selected models ---
+    df_abs = df_abs.sort_values("foveation")
+    df_abs["foveation_label"] = df_abs["foveation"].apply(format_label)
+    # --- prepare normalized ---
     keep = ["base", "crop", "blur-light", "cm-light"]
-    df = df[df["foveation"].isin(keep)].copy()
-    # --- compute normalized accuracies ---
-    df["a_norm"] = 1.0
-    df["ax_norm"] = df["ax_acc"] / df["a_acc"]
-    df["xax_norm"] = df["xax_acc"] / df["a_acc"]
-    # --- reshape ---
-    df_long = df.melt(
+    df_rel = df[df["foveation"].isin(keep)].copy()
+    df_rel["a_norm"] = 1.0
+    df_rel["ax_norm"] = df_rel["ax_acc"] / df_rel["a_acc"]
+    df_rel["xax_norm"] = df_rel["xax_acc"] / df_rel["a_acc"]
+    df_long = df_rel.melt(
         id_vars=["foveation"],
         value_vars=["a_norm", "ax_norm", "xax_norm"],
         var_name="condition",
         value_name="accuracy"
     )
-    # clean names
     df_long["condition"] = df_long["condition"].str.replace("_norm", "")
-    # enforce order
-    condition_order = ["a", "ax", "xax"]
     df_long["condition"] = pd.Categorical(
         df_long["condition"],
-        categories=condition_order,
+        categories=["a", "ax", "xax"],
         ordered=True
     )
-    # palette
     palette = get_foveation_palette()
-    # --- plot ---
-    plt.figure(figsize=(7, 4))
+    fig, axes = plt.subplots(
+        1, 2,
+        figsize=(10, 4),
+        gridspec_kw={"width_ratios": [1.6, 1]} 
+    )
+    # LEFT: ABSOLUTE BARPLOT
+    ax = axes[0]
+    sns.barplot(
+        data=df_abs,
+        x="foveation_label",
+        y="a_acc",
+        hue="foveation",
+        palette=palette,
+        ax=ax
+    )
+    ax.set_title("Absolute Performance (Condition = a)")
+    ax.set_ylabel("Accuracy (%)")
+    ax.set_xlabel("")
+    ax.legend().remove()
+    for i, (_, row) in enumerate(df_abs.iterrows()):
+        ax.text(i, row["a_acc"] + 0.8, f"{row['a_acc']:.1f}",
+                ha="center", fontsize=9)
+    ax.set_ylim(0, df_abs["a_acc"].max() + 5)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=0)
+    # RIGHT: RELATIVE LINEPLOT
+    ax = axes[1]
     sns.lineplot(
         data=df_long,
         x="condition",
         y="accuracy",
         hue="foveation",
         palette=palette,
-        marker="o"
+        marker="o",
+        ax=ax
     )
-    plt.xlabel("Condition")
-    plt.ylabel("Relative Accuracy (normalized to 'a')")
-    plt.title(f"Crowding Effect at Distance = {distance}")
-    # force nice limits
-    plt.ylim(0.6, 1.05)
-    plt.legend(title="Foveation", frameon=False)
+    ax.set_title(f"Crowding Effect (Distance = {distance})")
+    ax.set_ylabel("Relative Accuracy")
+    ax.set_xlabel("Condition")
+    ax.set_ylim(0.6, 1.05)
+    ax.legend(frameon=True)
     plt.tight_layout()
-    out_path = FIG_DIR / "crowding" / f"condition_trend_norm_d{distance}.pdf"
-    plt.savefig(out_path)
+    out_path = FIG_DIR / "crowding" / f"crowding_intro_d{distance}.pdf"
+    plt.savefig(out_path, bbox_inches="tight")
     plt.close()
     print(f"Saved → {out_path}")
     
@@ -1659,11 +1658,125 @@ def plot_crowding_vs_strength(distance=20, mode="a_xax"):
     plt.xlabel("Foveation Strength")
     plt.ylabel("Δ Accuracy (relative)")
     plt.title(f"{title} at Distance = {distance}")
-    plt.legend(title="Model", frameon=False, bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.legend(title="Model", frameon=True, bbox_to_anchor=(1.05, 1), loc="upper left")
     plt.tight_layout()
     out_path = FIG_DIR / "crowding" / f"{mode}_vs_strength.pdf"
     plt.savefig(out_path)
     plt.close()
+    print(f"Saved → {out_path}")
+    
+    
+def plot_crowding_confidence_strength_effect(distance=20):
+
+    set_thesis_style()
+
+    df = load_analysis_data("crowding_results")
+    df["foveation"] = df["foveation"].str.replace("-nosal", "-medium", regex=False)
+    df = df[df["distance"] == distance].copy()
+
+    # --- split groups ---
+    def parse(row):
+        name = row["foveation"]
+
+        if "blur" in name:
+            group = "blur"
+        elif "cm" in name:
+            group = "cm"
+        else:
+            group = "other"
+
+        if "light" in name:
+            strength = "light"
+        elif "strong" in name:
+            strength = "strong"
+        elif group in ["blur", "cm"]:
+            strength = "medium"
+        else:
+            strength = "constant"
+
+        return pd.Series([group, strength])
+
+    df[["group", "strength"]] = df.apply(parse, axis=1)
+
+    # --- normalize to a ---
+    df["xax_rel"] = df["xax_conf"] / df["a_conf"]
+
+    # --- separate baseline + crop ---
+    base_val = df[df["foveation"] == "base"]["xax_rel"].values[0]
+    crop_val = df[df["foveation"] == "crop"]["xax_rel"].values[0]
+
+    # --- keep only blur + cm ---
+    df_plot = df[df["group"].isin(["blur", "cm"])].copy()
+
+    # ordering
+    strength_order = ["light", "medium", "strong"]
+    df_plot["strength"] = pd.Categorical(
+        df_plot["strength"],
+        categories=strength_order,
+        ordered=True
+    )
+
+    palette = get_foveation_palette()
+
+    # ======================
+    # PLOT
+    # ======================
+    fig, ax = plt.subplots(figsize=(6, 4))
+
+    for group in ["blur", "cm"]:
+        sub = df_plot[df_plot["group"] == group]
+
+        ax.plot(
+            sub["strength"],
+            sub["xax_rel"],
+            marker="o",
+            linewidth=2,
+            label=group.capitalize(),
+            color=palette[group]
+        )
+
+    # --- reference lines ---
+    ax.axhline(1.0, linestyle=":", color="gray", linewidth=1)
+
+    ax.axhline(
+        base_val,
+        linestyle="--",
+        color=palette["base"],
+        linewidth=2,
+        label="Base"
+    )
+
+    ax.axhline(
+        crop_val,
+        linestyle="--",
+        color=palette["crop"],
+        linewidth=2,
+        label="Crop"
+    )
+
+    # --- labels ---
+    ax.set_xlabel("Foveation Strength")
+    ax.set_ylabel("Relative Confidence (xax / a)")
+    ax.set_title(f"Confidence Drop under Crowding (All Predictions)", fontsize=12)
+
+    # --- limits ---
+    ymin = df_plot["xax_rel"].min() - 0.02
+    ymax = 1.02
+    ax.set_ylim(ymin, ymax)
+
+    # --- legend ---
+    ax.legend(
+        frameon=True,
+        ncol=2,
+        fontsize=9
+    )
+
+    plt.tight_layout()
+
+    out_path = FIG_DIR / "crowding" / f"confidence_strength_effect_d{distance}.pdf"
+    plt.savefig(out_path, bbox_inches="tight")
+    plt.close()
+
     print(f"Saved → {out_path}")
     
     
@@ -1679,6 +1792,7 @@ if __name__ == "__main__":
     #build_master_csv()
     #compute_background_stats()
     #compute_top_predictions()
+    #compute_most_hallucinated_classes()
     
     #plot_ooc_delta_heatmap()
     #plot_color_std_object_only()
@@ -1690,6 +1804,8 @@ if __name__ == "__main__":
     #export_ooc_background_summary()
     #plot_model_ooc_confidence()
     #plot_ooc_confidence_gaps(1) # 1,2,3
+    #plot_ooc_confidence_gaps(2)
+    #plot_ooc_confidence_gaps(3)
     #plot_ooc_confidence_dynamics()
     
     #plot_small_objects_accuracy()
@@ -1700,8 +1816,9 @@ if __name__ == "__main__":
 
     #plot_crowding_distance_trend(condition="ax", normalize=True) # ax or xax
     #plot_crowding_distance_trend(condition="xax", normalize=True) # ax or xax
-    #plot_crowding_absolute_a()
-    #plot_crowding_condition_trend_normalized(distance=20)
-    #plot_crowding_vs_strength(distance=20, mode="a_xax") # a_ax, a_xax, ax_xax
+    #plot_crowding_vs_strength(mode="a_xax") # a_ax, a_xax, ax_xax
     #plot_crowding_vs_strength(mode="a_ax")
     #plot_crowding_vs_strength(mode="ax_xax")
+    #plot_crowding_intro()
+    #plot_crowding_confidence_strength_effect()
+    

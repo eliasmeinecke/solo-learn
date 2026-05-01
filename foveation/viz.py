@@ -31,7 +31,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main():
 
-    indices = [42_000] # 100_003, 299_507, 180_000, 676_000, 42_000, 968_200, 25_000
+    idx = random.randint(0, 1_000_000)
+    indices = [idx] # 100_003, 299_507, 180_000, 676_000, 42_000, 968_200, 25_000
 
     samples = []
 
@@ -53,8 +54,6 @@ def main():
     
     #viz_ego4d_example(frame, annot, saliency)
     #viz_fov(samples, method="crop")
-    #viz_fov(samples, method="blur")
-    #viz_fov(samples, method="cm")
     #viz_blur_heatmaps(samples)
     #viz_mask_centroids()
     #viz_imagenet_mask_samples(4)

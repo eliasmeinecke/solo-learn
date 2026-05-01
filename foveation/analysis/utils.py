@@ -178,6 +178,9 @@ def get_foveation_palette():
         "cm-light":  "#CDB4DB",
         "cm-medium": "#9D4EDD",
         "cm-strong": "#5A189A",
+        # without strengths
+        "blur": "#4C956C",
+        "cm": "#9D4EDD",
     }
     
     
