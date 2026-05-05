@@ -1543,9 +1543,9 @@ def plot_crowding_intro(distance=20):
     # --- prepare normalized ---
     keep = ["base", "crop", "blur-light", "cm-light"]
     df_rel = df[df["foveation"].isin(keep)].copy()
-    df_rel["a_norm"] = 1.0
-    df_rel["ax_norm"] = df_rel["ax_acc"] / df_rel["a_acc"]
-    df_rel["xax_norm"] = df_rel["xax_acc"] / df_rel["a_acc"]
+    df_rel["a_norm"] = 0.0
+    df_rel["ax_norm"] = df_rel["ax_acc"] / df_rel["a_acc"] - 1
+    df_rel["xax_norm"] = df_rel["xax_acc"] / df_rel["a_acc"] - 1
     df_long = df_rel.melt(
         id_vars=["foveation"],
         value_vars=["a_norm", "ax_norm", "xax_norm"],
@@ -1597,7 +1597,7 @@ def plot_crowding_intro(distance=20):
     ax.set_title(f"Crowding Effect (Distance = {distance})")
     ax.set_ylabel("Relative Accuracy")
     ax.set_xlabel("Condition")
-    ax.set_ylim(0.6, 1.05)
+    ax.set_ylim(-0.4, 0.05)
     ax.legend(frameon=True)
     plt.tight_layout()
     out_path = FIG_DIR / "crowding" / f"crowding_intro_d{distance}.pdf"
@@ -1608,28 +1608,49 @@ def plot_crowding_intro(distance=20):
 
 def plot_crowding_vs_strength(distance=20, mode="a_xax"):
     """
-    modes: "a_ax", "ax_xax", "a_xax"
+    modes: "a_xax", "a_ax", "ax_xax", 
     """
+
     set_thesis_style()
     df = load_analysis_data("crowding_results")
-    df["foveation"] = df["foveation"].str.replace("-nosal", "-medium", regex=False)
+
+    df["foveation"] = (
+        df["foveation"]
+        .str.replace("-nosal", "-medium", regex=False)
+    )
+
     df = df[df["distance"] == distance].copy()
-    # --- normalize ---
+
+    # ======================
+    # NORMALIZE
+    # ======================
+
     df["ax_rel"] = df["ax_acc"] / df["a_acc"]
     df["xax_rel"] = df["xax_acc"] / df["a_acc"]
-    # --- compute crowding effect ---
+
+    # ======================
+    # CROWDING EFFECT
+    # ======================
+
     if mode == "a_ax":
         df["crowding"] = df["ax_rel"] - 1
         title = "Crowding Effect (a → ax)"
+
     elif mode == "ax_xax":
         df["crowding"] = df["xax_rel"] - df["ax_rel"]
         title = "Crowding Effect (ax → xax)"
+
     elif mode == "a_xax":
         df["crowding"] = df["xax_rel"] - 1
         title = "Crowding Effect (a → xax)"
+
     else:
         raise ValueError(mode)
-    # --- extract strength ---
+
+    # ======================
+    # STRENGTH
+    # ======================
+
     def parse_strength(name):
         if "light" in name:
             return "light"
@@ -1639,28 +1660,147 @@ def plot_crowding_vs_strength(distance=20, mode="a_xax"):
             return "medium"
         else:
             return "constant"
+
     df["strength"] = df["foveation"].apply(parse_strength)
-    # ordering
+
     order = ["constant", "light", "medium", "strong"]
-    df["strength"] = pd.Categorical(df["strength"], categories=order, ordered=True)
-    # --- plot ---
-    plt.figure(figsize=(6, 4))
-    sns.stripplot(
-        data=df,
-        x="strength",
-        y="crowding",
-        hue="foveation",
-        palette=get_foveation_palette(),
-        size=8,
-        jitter=False
+
+    df["strength"] = pd.Categorical(
+        df["strength"],
+        categories=order,
+        ordered=True
     )
-    plt.axhline(0, linestyle=":", color="gray", linewidth=1)
+
+    # ======================
+    # GROUPS
+    # ======================
+
+    df["group"] = df["foveation"].apply(get_group)
+    palette = get_foveation_palette()
+
+    marker_map = {
+        "base": "o",
+        "crop": "s",
+        "blur-light": "^",
+        "blur-medium": "^",
+        "blur-strong": "^",
+        "cm-light": "D",
+        "cm-medium": "D",
+        "cm-strong": "D",
+    }
+    x_map = {
+        "constant": 0,
+        "light": 1,
+        "medium": 2,
+        "strong": 3
+    }
+    plt.figure(figsize=(6, 4))
+
+    # --- optional trend lines ---
+    for group in ["blur", "cm"]:
+
+        subset = (
+            df[df["group"] == group]
+            .sort_values("strength")
+        )
+
+        xs = [x_map[s] for s in subset["strength"]]
+        ys = subset["crowding"].values
+
+        plt.plot(
+            xs,
+            ys,
+            color=palette[group],
+            alpha=0.4,
+            linewidth=2
+        )
+
+    # --- points ---
+    for _, row in df.iterrows():
+
+        x = x_map[row["strength"]]
+
+        plt.scatter(
+            x,
+            row["crowding"],
+            s=90,
+            color=palette[row["group"]],
+            marker=marker_map[row["foveation"]],
+            edgecolor="black",
+            linewidth=0.8,
+            zorder={
+                "base": 4,
+                "crop": 2,
+                "blur": 3,
+                "cm": 3,
+            }[row["group"]]
+        )
+
+    # AXES
+    plt.axhline(
+        0,
+        linestyle=":",
+        color="gray",
+        linewidth=1
+    )
+
+    plt.xticks(
+        [0, 1, 2, 3],
+        ["constant", "light", "medium", "strong"]
+    )
+
     plt.xlabel("Foveation Strength")
     plt.ylabel("Δ Accuracy (relative)")
     plt.title(f"{title} at Distance = {distance}")
-    plt.legend(title="Model", frameon=True, bbox_to_anchor=(1.05, 1), loc="upper left")
+
+    # LEGEND
+    legend_elements = [
+        Line2D(
+            [0], [0],
+            marker='o',
+            linestyle='None',
+            label='base',
+            markerfacecolor=palette["base"],
+            markeredgecolor='black',
+            markersize=8
+        ),
+        Line2D(
+            [0], [0],
+            marker='s',
+            linestyle='None',
+            label='crop',
+            markerfacecolor=palette["crop"],
+            markeredgecolor='black',
+            markersize=8
+        ),
+        Line2D(
+            [0], [0],
+            marker='^',
+            linestyle='None',
+            label='blur',
+            markerfacecolor=palette["blur"],
+            markeredgecolor='black',
+            markersize=8
+        ),
+        Line2D(
+            [0], [0],
+            marker='D',
+            linestyle='None',
+            label='cm',
+            markerfacecolor=palette["cm"],
+            markeredgecolor='black',
+            markersize=8
+        ),
+    ]
+
+    plt.legend(
+        handles=legend_elements,
+        frameon=True,
+        loc="lower right"
+    )
+
     plt.tight_layout()
-    out_path = FIG_DIR / "crowding" / f"{mode}_vs_strength.pdf"
+    out_path = (FIG_DIR / "crowding" / f"{mode}_vs_strength.pdf")
     plt.savefig(out_path)
     plt.close()
     print(f"Saved → {out_path}")
@@ -1699,11 +1839,11 @@ def plot_crowding_confidence_strength_effect(distance=20):
     df[["group", "strength"]] = df.apply(parse, axis=1)
 
     # --- normalize to a ---
-    df["xax_rel"] = df["xax_conf"] / df["a_conf"]
+    df["crowding"] = df["xax_conf_correct"] / df["a_conf_correct"] - 1
 
     # --- separate baseline + crop ---
-    base_val = df[df["foveation"] == "base"]["xax_rel"].values[0]
-    crop_val = df[df["foveation"] == "crop"]["xax_rel"].values[0]
+    base_val = df[df["foveation"] == "base"]["crowding"].values[0]
+    crop_val = df[df["foveation"] == "crop"]["crowding"].values[0]
 
     # --- keep only blur + cm ---
     df_plot = df[df["group"].isin(["blur", "cm"])].copy()
@@ -1728,10 +1868,10 @@ def plot_crowding_confidence_strength_effect(distance=20):
 
         ax.plot(
             sub["strength"],
-            sub["xax_rel"],
+            sub["crowding"],
             marker="o",
             linewidth=2,
-            label=group.capitalize(),
+            label=group,
             color=palette[group]
         )
 
@@ -1743,7 +1883,7 @@ def plot_crowding_confidence_strength_effect(distance=20):
         linestyle="--",
         color=palette["base"],
         linewidth=2,
-        label="Base"
+        label="base"
     )
 
     ax.axhline(
@@ -1751,17 +1891,17 @@ def plot_crowding_confidence_strength_effect(distance=20):
         linestyle="--",
         color=palette["crop"],
         linewidth=2,
-        label="Crop"
+        label="crop"
     )
 
     # --- labels ---
     ax.set_xlabel("Foveation Strength")
-    ax.set_ylabel("Relative Confidence (xax / a)")
+    ax.set_ylabel("Relative Confidence (a -> xax)")
     ax.set_title(f"Confidence Drop under Crowding (All Predictions)", fontsize=12)
 
     # --- limits ---
-    ymin = df_plot["xax_rel"].min() - 0.02
-    ymax = 1.02
+    ymin = df_plot["crowding"].min() - 0.02
+    ymax = 0.02
     ax.set_ylim(ymin, ymax)
 
     # --- legend ---

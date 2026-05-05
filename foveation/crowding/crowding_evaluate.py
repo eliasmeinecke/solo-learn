@@ -54,8 +54,11 @@ def evaluate_crowding(model, device, model_name, foveation, seeds):
         )
         loader = DataLoader(ds, batch_size=1, shuffle=False, num_workers=4)
         correct = 0
-        conf_sum = 0.0
         n = 0
+        conf_correct_sum = 0.0
+        conf_incorrect_sum = 0.0
+        n_correct = 0
+        n_incorrect = 0
         with torch.no_grad():
             for img, label, gaze in loader:
                 img = img.to(device)
@@ -70,15 +73,22 @@ def evaluate_crowding(model, device, model_name, foveation, seeds):
                 logits = model(img)
                 probs = torch.softmax(logits, dim=1)
                 top1 = probs.argmax(dim=1)
-                correct += int((top1 == label).item())
-                conf_sum += probs[0, top1].item()
+                conf = probs[0, top1].item()
+                if top1 == label:
+                    correct += 1
+                    conf_correct_sum += conf
+                    n_correct += 1
+                else:
+                    conf_incorrect_sum += conf
+                    n_incorrect += 1
                 n += 1
         row["a_acc"] = correct / n
-        row["a_conf"] = conf_sum / n
-        
-        # for convenient plotting:
+        row["a_conf_correct"] = conf_correct_sum / max(n_correct, 1)
+        row["a_conf_incorrect"] = conf_incorrect_sum / max(n_incorrect, 1)
+        # std = 0 (kein seed-averaging)
         row["a_acc_std"] = 0.0
-        row["a_conf_std"] = 0.0
+        row["a_conf_correct_std"] = 0.0
+        row["a_conf_incorrect_std"] = 0.0
 
         # AX / XAX (WITH SEEDS)
         for cond in ["ax", "xax"]:

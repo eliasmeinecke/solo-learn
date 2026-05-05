@@ -1,3 +1,13 @@
+# Modified solo-learn for Thesis Experiments
+This repository is a fork of https://github.com/vturrisi/solo-learn and contains modifications used in the thesis:
+"Comparing Gaze-Based Foveation Techniques for Self-Supervised Representation Learning in Egocentric Data"
+
+## Key modifications
+- Integration of gaze-based foveation (crop, blur, cortical magnification)
+- Ego4D preprocessing pipeline
+- Evaluation pipelines for OOC and crowding experiments
+
+
 <p align="center">
   <img src="logo.png" width="250"/>
 </p>
