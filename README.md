@@ -7,6 +7,7 @@ This repository is a fork of https://github.com/vturrisi/solo-learn and contains
 - Ego4D preprocessing pipeline
 - Evaluation pipelines for OOC and crowding experiments
 
+---
 
 <p align="center">
   <img src="logo.png" width="250"/>
